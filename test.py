@@ -3,7 +3,7 @@ import gym
 import os.path
 import numpy as np
 
-name = 'BSSEnv-v0'
+name = 'BSSEnvTest-v0'
 env = gym.make(name)  # gym.Env
 env.seed(42)
 # print(env.observation_space, env.action_space)
@@ -18,7 +18,7 @@ def get_supriyo_policy_action(env, obs, policy):
     current_time = int(obs[-1])
     yp_t = np.array(ypcmu[current_time])
     yn_t = np.array(yncmu[current_time])
-    return current_alloc + yp_t - yn_t
+    return current_alloc + yn_t - yp_t
 
 
 def read_supriyo_policy_results(env):
@@ -50,11 +50,11 @@ for ep in range(10):
     scenario = None
     done = False
     obs = env.reset()
-    # policy = read_supriyo_policy_results(env)
+    policy = read_supriyo_policy_results(env)
     while not done:
         action = None
         # print(obs)
-        # action = get_supriyo_policy_action(env, obs, policy)
+        action = get_supriyo_policy_action(env, obs, policy)
         obs, r, done, info = env.step(action)
         R += r
         ld_pickup += info["lost_demand_pickup"]

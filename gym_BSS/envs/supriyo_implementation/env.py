@@ -11,13 +11,15 @@ class BSSEnv(gym.Env):
         super().__init__()
         self.nzones = nzones
         self.ntimesteps = ntimesteps
-        self.scenarios = list(range(21, 61)) if use_test_data else list(range(1, 21))
+        self.scenarios = list(
+            range(21, 61)) if use_test_data else list(range(1, 21))
         if data_dir is None:
             data_dir = os.path.join(os.path.dirname(__file__), "default_data")
         self.data_dir = data_dir
         self.__read_data()
         self.capacities = np.array(self.__cp)
         self.starting_allocation = np.array(self.__ds)
+        self.max_demand = 100
         self.metadata = {
             'render.modes': [],
             'nzones': self.nzones,
@@ -27,10 +29,10 @@ class BSSEnv(gym.Env):
             'data_dir': self.data_dir,
             'scenarios': self.scenarios
         }
-        self.observation_space = spaces.Box(low=0, high=np.inf, shape=[
-            self.nzones * 2 + 1], dtype=np.float32)
-        self.action_space = spaces.Box(low=0, high=np.inf, shape=[
-            self.nzones], dtype=np.float32)
+        self.observation_space = spaces.Box(low=np.array([0] * (2 * self.nzones + 1)), high=np.array(
+            [self.max_demand] * self.nzones + [self.nbikes] * self.nzones + [self.ntimesteps]), dtype=np.float32)
+        self.action_space = spaces.Box(low=0, high=self.nbikes, shape=[
+                                       self.nzones], dtype=np.float32)
         self._scenario = 20
         self.seed(None)
 
@@ -171,18 +173,29 @@ class BSSEnv(gym.Env):
             if np.round(np.sum(action)) != self.nbikes:
                 raise error.InvalidAction(
                     'Dimensions of action must sum upto env.metadata["nbikes"]. Provided action was {0} with sum {1}'.format(action, sum(action)))
+            if np.any(action < -0.0):
+                raise error.InvalidAction(
+                    'Each dimension of action must be positive. Provided action was {0}'.format(action))
             # if np.any(action > self.capacities):
             #     raise error.InvalidAction(
             #         'Individual dimensions of action must be less than respective dimentions of env.metadata["capacities"]. Provided action was {0}'.format(self.capacities - action))
+            # print("action: ", action)
+            # print("current_alloc", self.__ds[self.__t])
             alloc_diff = action - np.array(self.__ds[self.__t])
-            yp = alloc_diff * (alloc_diff > 0)
-            yn = - alloc_diff * (alloc_diff < 0)
+            yn = alloc_diff * (alloc_diff > 0)
+            yp = - alloc_diff * (alloc_diff < 0)
             self.__yp[self.__t] = list(yp)
             self.__yn[self.__t] = list(yn)
 
     def __calculate_lost_demand_new_allocation(self):
         full_lost = 0.0
         iteration = self.__t
+        assert abs(sum(self.__yp[iteration]) - sum(self.__yn[iteration])) < 1e-6, "sum(yp)={0}\nsum(yn)={1}\nyp={2}\nyn={3}".format(
+            sum(self.__yp[iteration]), sum(self.__yn[iteration]), self.__yp[iteration], self.__yn[iteration])
+        assert np.all(np.array(self.__yp[iteration]) >= -0.0)
+        assert np.all(np.array(self.__yn[iteration]) >= -0.0)
+        before_reallocation = sum(self.__ds[iteration])
+        # print("Sum before reallocation:", before_reallocation)
         for s in range(self.nzones):
             # and ((yn[iteration][s]-yp[iteration][s])<=cp[s]-ds[iteration][s])):
             if((self.__ds[iteration][s] >= (self.__yp[iteration][s] - self.__yn[iteration][s]))):
@@ -215,9 +228,15 @@ class BSSEnv(gym.Env):
 
         flag = 0
 
+        after_reallocation = sum(self.__ds[iteration + 1])
+        # print("Sum after reallocation:", sum(self.__ds[iteration + 1]))
+        assert abs(after_reallocation - before_reallocation) < 1e-6, "This is where the bug is. sum before reallocation={0}. sum after reallocation={1}\nallocation_before={2}\nallocation_after={3}".format(
+            before_reallocation, after_reallocation, self.__ds[iteration], self.__ds[iteration + 1])
+
         while(flag == 0):
             for s in range(self.nzones):
                 if(self.__ds[iteration + 1][s] > self.__cp[s]):
+                    # print("readjusting for zone", s)
                     for s1 in self.__mindis[s]:
                         if((self.__ds[iteration + 1][s] - self.__cp[s]) <= (self.__cp[s1] - self.__ds[iteration + 1][s1])):
                             self.__ds[iteration + 1][s1] = self.__ds[iteration +
@@ -233,10 +252,14 @@ class BSSEnv(gym.Env):
                                 self.__ds[iteration + 1][s1]
                             self.__ds[iteration + 1][s1] = self.__cp[s1]
 
+            after_readjustment_sum = sum(self.__ds[iteration + 1])
+            assert abs(after_reallocation - after_readjustment_sum) < 1e-6, "This is where the bug is. starting_sum={0}. After readjustment, sum={1}".format(
+                after_reallocation, after_readjustment_sum)
+
             flag = 1
             for s in range(self.nzones):
-                if(self.__ds[iteration + 1][s] > self.__cp[s]):
-                    print("I am stuck")
+                assert self.__ds[iteration +
+                                 1][s] <= self.__cp[s], "I am stuck. Something is wrong. Readjustment should have finished in one pass"
 
         lost_call = 0
         revenue = 0
