@@ -30,9 +30,9 @@ class BSSEnv(gym.Env):
             'scenarios': self.scenarios
         }
         self.observation_space = spaces.Box(low=np.array([0] * (2 * self.nzones + 1)), high=np.array(
-            [self.max_demand] * self.nzones + [self.nbikes] * self.nzones + [self.ntimesteps]), dtype=np.float32)
-        self.action_space = spaces.Box(low=0, high=self.nbikes, shape=[
-                                       self.nzones], dtype=np.float32)
+            [self.max_demand] * self.nzones + list(self.capacities) + [self.ntimesteps]), dtype=np.float32)
+        self.action_space = spaces.Box(low=np.zeros(
+            [self.nzones]), high=self.capacities, dtype=np.float32)
         self._scenario = 20
         self.seed(None)
 
@@ -173,14 +173,14 @@ class BSSEnv(gym.Env):
             if np.round(np.sum(action)) != self.nbikes:
                 raise error.InvalidAction(
                     'Dimensions of action must sum upto env.metadata["nbikes"]. Provided action was {0} with sum {1}'.format(action, sum(action)))
-            if np.any(action < -0.0):
+            if np.any(action < -1e-6):
                 raise error.InvalidAction(
                     'Each dimension of action must be positive. Provided action was {0}'.format(action))
-            # if np.any(action > self.capacities):
-            #     raise error.InvalidAction(
-            #         'Individual dimensions of action must be less than respective dimentions of env.metadata["capacities"]. Provided action was {0}'.format(self.capacities - action))
-            # print("action: ", action)
-            # print("current_alloc", self.__ds[self.__t])
+            if np.any(action > self.capacities + 1e-6):
+                raise error.InvalidAction(
+                    'Individual dimensions of action must be less than respective dimentions of env.metadata["capacities"]. Provided action was {0}'.format(self.capacities - action))
+            print("action: ", action)
+            print("current_alloc", self.__ds[self.__t])
             alloc_diff = action - np.array(self.__ds[self.__t])
             yn = alloc_diff * (alloc_diff > 0)
             yp = - alloc_diff * (alloc_diff < 0)

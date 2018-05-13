@@ -42,7 +42,7 @@ def read_supriyo_policy_results(env):
 
 
 Rs = []
-for ep in range(10):
+for ep in range(100):
     R = 0
     ld_pickup = 0
     ld_dropoff = 0
@@ -55,6 +55,7 @@ for ep in range(10):
         action = None
         # print(obs)
         action = get_supriyo_policy_action(env, obs, policy)
+        # action = None
         obs, r, done, info = env.step(action)
         R += r
         ld_pickup += info["lost_demand_pickup"]
