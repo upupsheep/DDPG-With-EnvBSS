@@ -179,8 +179,8 @@ class BSSEnv(gym.Env):
             if np.any(action > self.capacities + 1e-6):
                 raise error.InvalidAction(
                     'Individual dimensions of action must be less than respective dimentions of env.metadata["capacities"]. Provided action was {0}'.format(self.capacities - action))
-            print("action: ", action)
-            print("current_alloc", self.__ds[self.__t])
+            # print("action: ", action)
+            # print("current_alloc", self.__ds[self.__t])
             alloc_diff = action - np.array(self.__ds[self.__t])
             yn = alloc_diff * (alloc_diff > 0)
             yp = - alloc_diff * (alloc_diff < 0)
