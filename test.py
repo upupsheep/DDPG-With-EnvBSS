@@ -1,9 +1,12 @@
-import gym_BSS  # noqa: F401
-import gym
 import os.path
+import sys
+
+import gym
 import numpy as np
 
-name = 'BSSEnvTest-v0'
+import gym_BSS  # noqa: F401
+
+name = sys.argv[1] if len(sys.argv) > 1 else 'BSSEnvTest-v0'
 env = gym.make(name)  # gym.Env
 env.seed(42)
 # print(env.observation_space, env.action_space)
@@ -50,12 +53,12 @@ for ep in range(100):
     scenario = None
     done = False
     obs = env.reset()
-    policy = read_supriyo_policy_results(env)
+    # policy = read_supriyo_policy_results(env)
     while not done:
         action = None
         # print(obs)
-        action = get_supriyo_policy_action(env, obs, policy)
-        # action = None
+        # action = get_supriyo_policy_action(env, obs, policy)
+        action = None
         obs, r, done, info = env.step(action)
         R += r
         ld_pickup += info["lost_demand_pickup"]

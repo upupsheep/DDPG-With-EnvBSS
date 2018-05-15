@@ -7,12 +7,12 @@ from gym.utils import seeding
 
 class BSSEnv(gym.Env):
 
-    def __init__(self, nzones=95, ntimesteps=12, data_dir=None, use_test_data=False):
+    def __init__(self, nzones=95, ntimesteps=12, data_dir=None, data_set_name='actual_data_art', scenarios=list(range(1, 21))):
         super().__init__()
         self.nzones = nzones
         self.ntimesteps = ntimesteps
-        self.scenarios = list(
-            range(21, 61)) if use_test_data else list(range(1, 21))
+        self.scenarios = scenarios
+        self.data_set_name = data_set_name
         if data_dir is None:
             data_dir = os.path.join(os.path.dirname(__file__), "default_data")
         self.data_dir = data_dir
@@ -42,7 +42,7 @@ class BSSEnv(gym.Env):
         self.__read_zone_distances(os.path.join(
             self.data_dir, "RawData", "distance_zone.txt"))
         self.__read_demand_data(self.scenarios, os.path.join(
-            self.data_dir, "DemandScenarios", "actual-data-art", "DemandScenarios1", "demand_scenario_{scenario}.txt"))
+            self.data_dir, "DemandScenarios", self.data_set_name, "DemandScenarios1", "demand_scenario_{scenario}.txt"))
 
     def __read_capacity_and_starting_allocation(self, filename):
         self.__cp = [0 for k in range(self.nzones)]
