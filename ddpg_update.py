@@ -14,6 +14,11 @@ import numpy as np
 import gym
 import time
 
+import os.path
+import sys
+
+import gym_BSS
+
 
 #####################  hyper parameters  ####################
 
@@ -27,7 +32,40 @@ MEMORY_CAPACITY = 10000
 BATCH_SIZE = 32
 
 RENDER = False
-ENV_NAME = 'Pendulum-v0'
+# ENV_NAME = 'Pendulum-v0'
+ENV_NAME = 'BSSEnvTest-v0'
+
+#####################  BSS data functions  ####################
+
+def get_supriyo_policy_action(env, obs, policy):
+    ypcmu, yncmu = policy
+    env = env.unwrapped
+    current_alloc = obs[env.nzones:2 * env.nzones]
+    current_time = int(obs[-1])
+    yp_t = np.array(ypcmu[current_time])
+    yn_t = np.array(yncmu[current_time])
+    return current_alloc + yn_t - yp_t
+
+
+def read_supriyo_policy_results(env):
+    env = env.unwrapped
+    scenario = env._scenario
+    ypcmu = [[0.0 for k in range(env.nzones)] for j in range(env.ntimesteps)]
+    yncmu = [[0.0 for k in range(env.nzones)] for j in range(env.ntimesteps)]
+    f1 = open(
+        os.path.join(env.data_dir, "Our_policy",
+                     "policy_result{0}.csv".format(scenario)))
+    line = f1.readline()
+    line = f1.readline()
+    while (line != ""):
+        line = line.strip(" \n")
+        line = line.split(",")
+        if (int(line[0]) < 100):
+            ypcmu[int(line[0]) + 1][int(line[1])] = float(line[2])
+            yncmu[int(line[0]) + 1][int(line[1])] = float(line[3])
+        line = f1.readline()
+    f1.close()
+    return (ypcmu, yncmu)
 
 ###############################  DDPG  ####################################
 
@@ -112,8 +150,11 @@ class DDPG(object):
 ###############################  training  ####################################
 
 env = gym.make(ENV_NAME)
-env = env.unwrapped
-env.seed(1)
+# env = env.unwrapped
+env.seed(42)
+# print(env.observation_space, env.action_space)
+print('ENV_NAME: ', ENV_NAME)
+print(env.metadata)
 
 s_dim = env.observation_space.shape[0]
 a_dim = env.action_space.shape[0]
@@ -125,14 +166,23 @@ var = 3  # control exploration
 t1 = time.time()
 for i in range(MAX_EPISODES):
     s = env.reset()
+    policy = read_supriyo_policy_results(env)
     ep_reward = 0
+    ### info ###
+    ld_pickup = 0
+    ld_dropoff = 0
+    revenue = 0
+    scenario = None
+    #############
     for j in range(MAX_EP_STEPS):
         if RENDER:
             env.render()
 
         # Add exploration noise
-        a = ddpg.choose_action(s)
-        a = np.clip(np.random.normal(a, var), -2, 2)    # add randomness to action selection for exploration
+        a = None
+        # a = ddpg.choose_action(s)
+        a = get_supriyo_policy_action(env, s, policy)
+        # a = np.clip(np.random.normal(a, var), -2, 2)    # add randomness to action selection for exploration
         s_, r, done, info = env.step(a)
 
         ddpg.store_transition(s, a, r / 10, s_)
@@ -143,8 +193,24 @@ for i in range(MAX_EPISODES):
 
         s = s_
         ep_reward += r
+
+        ### info ###
+        ld_pickup += info["lost_demand_pickup"]
+        ld_dropoff += info["lost_demand_dropoff"]
+        revenue += info["revenue"]
+        scenario = info["scenario"]
+        ##############
+
         if j == MAX_EP_STEPS-1:
-            print('Episode:', i, ' Reward: %i' % int(ep_reward), 'Explore: %.2f' % var, )
+            print({
+                'Episode': i, 
+                'Reward': int(ep_reward), 
+                'Explore': var, 
+                'lost_demand_pickup': ld_pickup,
+                "lost_demand_dropoff": ld_dropoff,
+                "revenue": revenue,
+                "scenario": scenario
+            })
             # if ep_reward > -300:RENDER = True
             break
 print('Running time: ', time.time() - t1)
