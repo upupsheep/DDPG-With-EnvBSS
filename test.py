@@ -32,7 +32,7 @@ def read_supriyo_policy_results(env):
     f1 = open(
         os.path.join(env.data_dir, "Our_policy",
                      "policy_result{0}.csv".format(scenario)))
-    line = f1.readline()
+    # line = f1.readline()
     line = f1.readline()
     while (line != ""):
         line = line.strip(" \n")
