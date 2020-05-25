@@ -10,7 +10,7 @@ capacity:
 allocation: 要分配給zone s的車車數
 flow: timestep t時從zone i移動到zone j的車車數輛?
 demand: 顧客會從zone x騎到zone y
-    - demand_1d: zone_x在timestep t時顧客總共需要多少
+    - demand_1d: zone_x在timestep t時總共移出的車車數
 
 ### Variables: ###
 
@@ -21,13 +21,14 @@ self.max_demand: 100 -> timestep t時在zone s的最大demand?
 
 self.capacities: 每個zone可以容納的車車數 (一開始=self.__cp)
     - 1d array: shape = nzones
+    - paper說"using 10 bike trailers, each having capacity of 5
 self.__cp: 某個capacity?
 
 self.starting_allocation: 一開始的allocation? (一開始=self.__ds)
 self.__ds: 在timestep t時，station s裡擁有的車車數
     - 2d array: self.__ds[t][s]
     - self.__ds[t][s] -= (yp - yn)
-    - yp: 支出, yn: 給入
+    - yp: action預計移出, yn: action預計移入
 
 self.demand_data: 需求?
     - self.demand_data[scenario] = flow
@@ -36,11 +37,10 @@ self.__dis: zone x跟zone y之間的距離
     - 2d array: self.__dis[x][y]
 self.__mindis: zone x跟zone y之間的最短距離?
     - 2d array
-    - 不想看QQ反正也沒用到你
 
-self.__fl: flow?
-self.__xfl: 3d array, timestep i時zone k 到zone j的flow?
-self.__tfl1
+self.__fl: flow? -> demand flow
+self.__xfl: 3d array, timestep i時zone k 真正有移到zone j的flow?
+self.__tfl1: 2d array, timestep t時從zone s到其他所有zone的flow的總和
 
 ### Observation: ###
 1. the distribution of bikes at the end of the frame
