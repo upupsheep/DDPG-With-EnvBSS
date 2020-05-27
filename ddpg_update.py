@@ -166,7 +166,7 @@ var = 3  # control exploration
 t1 = time.time()
 for i in range(MAX_EPISODES):
     s = env.reset()
-    policy = read_supriyo_policy_results(env)
+    # policy = read_supriyo_policy_results(env)
     ep_reward = 0
     ### info ###
     ld_pickup = 0
