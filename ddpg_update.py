@@ -150,7 +150,7 @@ class DDPG(object):
 ###############################  training  ####################################
 
 env = gym.make(ENV_NAME)
-# env = env.unwrapped
+env = env.unwrapped
 env.seed(42)
 # print(env.observation_space, env.action_space)
 print('ENV_NAME: ', ENV_NAME)
@@ -180,9 +180,11 @@ for i in range(MAX_EPISODES):
 
         # Add exploration noise
         a = None
-        # a = ddpg.choose_action(s)
-        a = get_supriyo_policy_action(env, s, policy)
+        a = ddpg.choose_action(s)
+        # a = get_supriyo_policy_action(env, s, policy)
+        
         # a = np.clip(np.random.normal(a, var), -2, 2)    # add randomness to action selection for exploration
+        # a = (np.tanh(a) + 1) / 2
         s_, r, done, info = env.step(a)
 
         ddpg.store_transition(s, a, r / 10, s_)

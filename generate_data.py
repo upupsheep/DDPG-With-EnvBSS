@@ -19,12 +19,12 @@ def demand_bound():
     """
     Write demand bound information into file.
 
-    The first line is the number of bikes (bike_num).
+    The first line is the number of zones (zone).
     The second line is the capacity of each zone (capacity).
     The third line is the starting allocation of each zone (distribution).
     """
     f = open("demand_bound.txt", "w+")
-    f.write(str(bike_num) + "\n")
+    f.write(str(zone) + "\n")
     for i in range(0, zone):
         f.write(str(capacity[i]) + ' ')
     f.write(" \n")
@@ -55,7 +55,7 @@ def distance_zone():
     fx.close()
 
 
-def demand_scenario(scenario_num=5, ntimesteps=12):
+def demand_scenario(scenario_num=60, ntimesteps=12):
     """
     Write demand scenario information into file.
 
@@ -67,7 +67,7 @@ def demand_scenario(scenario_num=5, ntimesteps=12):
     if os.path.isdir("demand_scenario/") == False:
         os.mkdir("demand_scenario/")
     for scenario in range(1, scenario_num + 1):
-        file_name = "demand_scenario/demand_scenario_{}".format(scenario)
+        file_name = "demand_scenario/demand_scenario_{}.txt".format(scenario)
         f = open(file_name, "w+")
         for i in range(ntimesteps):
             for j in range(zone):
@@ -81,6 +81,6 @@ def demand_scenario(scenario_num=5, ntimesteps=12):
 if __name__ == "__main__":
     print("zone:", zone, "capacity:", capacity, "distribution:", distribution,
           "bike,_num", bike_num)
-    # demand_bound()
-    # distance_zone()
+    demand_bound()
+    distance_zone()
     demand_scenario()
