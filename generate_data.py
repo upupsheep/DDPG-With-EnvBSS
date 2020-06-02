@@ -44,13 +44,14 @@ def distance_zone():
     For example, element in row i, column j denotes the distance from 
     zone i to zone j.
     """
+    dist = np.random.uniform(0.000000001, 12, (zone, zone))
+    np.fill_diagonal(dist, 0.0)
+    dist = (dist + dist.T) / 2  # make it symmetry
+
     fx = open("distance_zone.txt", "w+")
     for i in range(zone):
         for j in range(zone):
-            if i == j:
-                fx.write(str(0.0) + ' ')
-            else:
-                fx.write(str(random.uniform(0.000000001, 12)) + ' ')
+            fx.write(str(dist[i][j]) + ' ')
         fx.write("\n")
     fx.close()
 
