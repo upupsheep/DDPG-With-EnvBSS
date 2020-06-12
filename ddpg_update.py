@@ -181,11 +181,26 @@ for i in range(MAX_EPISODES):
         # Add exploration noise
         a = None
         a = ddpg.choose_action(s)
-        # a = get_supriyo_policy_action(env, s, policy)
+        print('action random: ', a)
+        # a = get_supriyo_policy_action(env, s, policy)        
+        # a = np.clip(np.random.normal(a, var), 0.0, max(a_bound))    # add randomness to action selection for exploration
+        y = np.zeros(a.shape)
+        for i in range(a.shape[0]):
+            upper_bound = a_bound[i]
+            lower_bound = 0.0
+            y[i] = lower_bound + (upper_bound - lower_bound) * (a[i] - np.min(a)) / (np.max(a) - np.min(a))
+        print('y: ', y)
+
+        z = np.zeros(y.shape)
+        for i in range(y.shape[0]):
+            z[i] = y[i] + (env.nbikes - np.sum(y)) / (y.shape[0])
+        print('z: ', z)
         
-        # a = np.clip(np.random.normal(a, var), -2, 2)    # add randomness to action selection for exploration
-        # a = (np.tanh(a) + 1) / 2
-        s_, r, done, info = env.step(a)
+        # for i in range(len(a)):
+        #     a[i] = np.clip(a[i], 0.0, a_bound[i])
+        # print('a_bound: ', a_bound)
+        # print('action clipped: ', a)
+        s_, r, done, info = env.step(z)
 
         ddpg.store_transition(s, a, r / 10, s_)
 
