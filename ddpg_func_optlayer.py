@@ -126,13 +126,21 @@ class DDPG(object):
 
     def _build_a(self, s, scope, trainable):
         with tf.variable_scope(scope):
+            cell_input = tf.zeros((self.a_dim))
+
+            init_op = tf.initialize_all_variables()
+            with tf.Session() as sess:
+                sess.run(init_op)
+                print(sess.run(cell_input))
+
             net = tf.layers.dense(s, 30, activation=tf.nn.relu, name='l1', trainable=trainable)
             a = tf.layers.dense(net, self.a_dim, activation=tf.nn.tanh, name='a', trainable=trainable)
-            print('a: ', a)
+            print('a: ', type(a))
             # Opt_layer = OptLayer(a_dim)
             # a_opt = Opt_layer(a, self.a_dim, self.a_bound, self.env, self.sess)
             # print(tf.multiply(a, self.a_bound, name='scaled_a'),"QQQ")
-            return tf.multiply(a, self.a_bound, name='scaled_a')
+            z, grad_z = OptLayer_function(a, self.a_dim, self.a_bound, self.env)
+            return tf.multiply(z, self.a_bound, name='scaled_a')
 
     def _build_c(self, s, a, scope, trainable):
         with tf.variable_scope(scope):
@@ -147,93 +155,100 @@ class DDPG(object):
 
 def OptLayer_function(action, a_dim, a_bound, env):
     # adjust to y
-    maxa = action[np.argmax(action)]
-    mina = action[np.argmin(action)]
-    lower = np.zeros(a_dim)
-    y = np.zeros(a_dim)
-    print("bike_num: ", env.nbikes)
-    
-    print("abound: ", a_bound)
-    for i in range(a_dim):
-        y[i] = lower[i] + (a_bound[i]-lower[i]) * (action[i]-mina) / (maxa-mina)
-    print("y: ", y)
-    # adjust to z
-    z = np.zeros(a_dim)
+    print('action: ', action)
+    with tf.variable_scope("Optlayer"):
+        maxa = tf.reduce_max(action)
+        mina = tf.reduce_min(action)
+        lower = tf.zeros(a_dim)
+        tf_a_bound = tf.convert_to_tensor(a_bound)
+        y = tf.zeros(a_dim)
+        print("bike_num: ", env.nbikes)
+        
+        print("abound: ", a_bound)
+        y = lower + (a_bound-lower) * (action-mina) / (maxa-mina)
+        print("y: ", y)
+        # adjust to z
+        z = tf.zeros(a_dim)
 
-    # start algorithm#
-    phase = 0                        # lower=0 , upeer=1 , done=2
-    C_unclamp = env.nbikes           # how many left bike to distribute
-    set_unclamp = set(range(a_dim))  # unclamp set
-    unclamp_num = a_dim              # unclamp number=n'
-    grad_z = np.zeros((a_dim,a_dim)) # grad_z is 4*4 arrray
-    while phase != 2:
-        sum_y = 0
-        set_clamp_round = set()  # indices clamped in this iteration of the while loop
-        # algorithm line 7
-        for i in range(a_dim):
-            if i in set_unclamp:
-                sum_y = sum_y+y[i]
-        for i in range(a_dim):
-            if i in set_unclamp:
-                z[i] = y[i] + (C_unclamp-sum_y) / unclamp_num
-        print("z: ", z)
-        print("sum_y: ", sum_y)
-        # algorithm line8
-        for i in range(a_dim):
-            if i in set_unclamp:
-                for j in range(a_dim):
-                    if j in set_unclamp:
-                        if (i != j):
-                            grad_z[i][j] = (-1) / unclamp_num 
-                        else:
-                            grad_z[i][j] = 1 - (1/unclamp_num)
-        print("grad_z: ", grad_z)
-        # algorithm line 9
-        for j in range(a_dim):
-            if j not in set_unclamp:
-                for i in range(a_dim):
-                    grad_z[i][j] = 0
-        print("grad before clamp in this iteration: ", grad_z)
-        
-        # algorithm lin 10~20
-        for i in range(a_dim):
-            if i in set_unclamp:
-                if z[i] < lower[i] and phase == 0:
-                    z[i] = lower[i]
+        # start algorithm#
+        phase = 0                        # lower=0 , upeer=1 , done=2
+        C_unclamp = env.nbikes           # how many left bike to distribute
+        set_unclamp = set(range(a_dim))  # unclamp set
+        unclamp_num = a_dim              # unclamp number=n'
+        grad_z = tf.zeros((a_dim,a_dim)) # grad_z is 4*4 arrray
+        while phase != 2:
+            # sum_y = 0
+            sum_y = tf.Variable(0)
+            set_clamp_round = set()  # indices clamped in this iteration of the while loop
+            # algorithm line 7
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    # sum_y = sum_y+tf.gather(y, [i])
+                    add_sum = tf.add(sum_y, tf.gather(y, [i]))
+                    sum_y = tf.assign(add_sum, sum_y)
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    # z[i] = y[i] + (C_unclamp-sum_y) / unclamp_num
+                    unclamped_ratio = 
+                    add_sum = tf.add(tf.gather(y, [i])
+            print("z: ", z)
+            print("sum_y: ", sum_y)
+            # algorithm line8
+            for i in range(a_dim):
+                if i in set_unclamp:
                     for j in range(a_dim):
+                        if j in set_unclamp:
+                            if (i != j):
+                                grad_z[i][j] = (-1) / unclamp_num 
+                            else:
+                                grad_z[i][j] = 1 - (1/unclamp_num)
+            print("grad_z: ", grad_z)
+            # algorithm line 9
+            for j in range(a_dim):
+                if j not in set_unclamp:
+                    for i in range(a_dim):
                         grad_z[i][j] = 0
-                    set_clamp_round.add(i)
-                elif (z[i] > a_bound[i]) and phase == 1:
-                    z[i] = a_bound[i]
-                    for j in range(a_dim):
-                        grad_z[i][j] = 0
-                    set_clamp_round.add(i)
-        print("z_after clamp: ", z)
-        print("grad after clamp: ", grad_z)
-        # algorithm 21~25
-        unclamp_num = unclamp_num - len(set_clamp_round)
-        print("unclamp: ", unclamp_num)
-        for i in range(a_dim):
-            if i in set_clamp_round:
-                C_unclamp = C_unclamp - z[i]
-        print("C: ", C_unclamp)
-        set_unclamp = set_unclamp.difference(set_clamp_round)
-        print("unclamp set: ", set_unclamp)
-        if len(set_clamp_round) == 0:
-            phase = phase + 1
+            print("grad before clamp in this iteration: ", grad_z)
+            
+            # algorithm lin 10~20
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    if z[i] < lower[i] and phase == 0:
+                        z[i] = lower[i]
+                        for j in range(a_dim):
+                            grad_z[i][j] = 0
+                        set_clamp_round.add(i)
+                    elif (z[i] > a_bound[i]) and phase == 1:
+                        z[i] = a_bound[i]
+                        for j in range(a_dim):
+                            grad_z[i][j] = 0
+                        set_clamp_round.add(i)
+            print("z_after clamp: ", z)
+            print("grad after clamp: ", grad_z)
+            # algorithm 21~25
+            unclamp_num = unclamp_num - len(set_clamp_round)
+            print("unclamp: ", unclamp_num)
+            for i in range(a_dim):
+                if i in set_clamp_round:
+                    C_unclamp = C_unclamp - z[i]
+            print("C: ", C_unclamp)
+            set_unclamp = set_unclamp.difference(set_clamp_round)
+            print("unclamp set: ", set_unclamp)
+            if len(set_clamp_round) == 0:
+                phase = phase + 1
+            
+        # debug after optlayer
+        final_sum = 0
+        for i in range(a_dim):           
+            final_sum = final_sum + z[i]
+            assert lower[i] <= z[i] <= a_bound[i]   # make sure not violate the local constraint
         
-    # debug after optlayer
-    final_sum = 0
-    for i in range(a_dim):           
-        final_sum = final_sum + z[i]
-        assert lower[i] <= z[i] <= a_bound[i]   # make sure not violate the local constraint
-    
-    final_sum = np.around(final_sum)
-    print('sum: {}, nbikes: {}'.format(final_sum, env.nbikes))
-    assert final_sum == env.nbikes     # make sure sum is equal to bike number
-    if np.sum(y) == env.nbikes:
-        assert z == y
-    return z, grad_z
+        final_sum = np.around(final_sum)
+        print('sum: {}, nbikes: {}'.format(final_sum, env.nbikes))
+        assert final_sum == env.nbikes     # make sure sum is equal to bike number
+        if np.sum(y) == env.nbikes:
+            assert z == y
+        return z
 
 ###############################  training  ####################################   
 Rs = []
