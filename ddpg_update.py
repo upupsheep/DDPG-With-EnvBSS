@@ -58,13 +58,14 @@ def read_supriyo_policy_results(env):
 ###############################  DDPG  ####################################
 
 class DDPG(object):
-    def __init__(self, a_dim, s_dim, a_bound, env):
+    def __init__(self, a_dim, s_dim, a_bound,env):
         self.memory = np.zeros((MEMORY_CAPACITY, s_dim * 2 + a_dim + 1), dtype=np.float32)
         self.pointer = 0
         self.sess = tf.Session()
         self.env = env
 
         self.a_dim, self.s_dim, self.a_bound = a_dim, s_dim, a_bound,
+        self.env=env
         self.S = tf.placeholder(tf.float32, [None, s_dim], 's')
         self.S_ = tf.placeholder(tf.float32, [None, s_dim], 's_')
         self.R = tf.placeholder(tf.float32, [None, 1], 'r')
@@ -128,12 +129,13 @@ class DDPG(object):
     def _build_a(self, s, scope, trainable):
         with tf.variable_scope(scope):
             net = tf.layers.dense(s, 30, activation=tf.nn.relu, name='l1', trainable=trainable)
+            print(net,"net")
             a = tf.layers.dense(net, self.a_dim, activation=tf.nn.tanh, name='a', trainable=trainable)
-            print('a: ', a)
-            Opt_layer = OptLayer(a_dim)
-            a_opt = Opt_layer(a, self.a_dim, self.a_bound, self.env, self.sess)
-            # print(tf.multiply(a, self.a_bound, name='scaled_a'),"QQQ")
-            return tf.multiply(a_opt, self.a_bound, name='scaled_a')
+            print(a,"a")
+            a=  tf.multiply(a, self.a_bound, name='scaled_a')
+            print(a,"a")
+            a = OptLayer_function(a,self.a_dim,self.a_bound,self.env)
+            return a
 
     def _build_c(self, s, a, scope, trainable):
         with tf.variable_scope(scope):
@@ -145,23 +147,87 @@ class DDPG(object):
             return tf.layers.dense(net, 1, trainable=trainable)  # Q(s,a)
         
 ################ Opt layer#####################
-
-class OptLayer(tf.keras.layers.Layer):
-    def __init__(self, num_outputs):
-        super(OptLayer, self).__init__()
-        self.num_outputs = num_outputs
-
-    def call(self, action, a_dim, a_bound, env, sess):
-        action = action.eval(session=sess)
-
-        # adjust to y
-        maxa = action[np.argmax(action)]
-        mina = action[np.argmin(action)]
-        lower = np.zeros(a_dim)
-        y = np.zeros(a_dim)
-        print("bike_num: ", env.nbikes)
+            
+def OptLayer_function(action,a_dim,a_bound,env):
+    #adjust to y
+    print(type(action))
+    print(action)
+    with tf.variable_scope("Optlayer"):
+        maxa=tf.Variable(tf.reduce_max(action),name='maxa')
+        mina=tf.reduce_min(action)
+        lower=tf.zeros(a_dim)
+        tfa_bound=tf.convert_to_tensor(a_bound)
+        y=tf.zeros(a_dim)
+        y=lower+(tfa_bound-lower)*(action-mina)/(maxa-mina)
+        print("maxa: ",maxa)
+        print("mina: ",mina)
+        print("lower: ",lower)
+        print("tfa_bound: ",tfa_bound)
+        print("y",y)
+   # maxa=action[tf.math.argmax(action)]
+   # mina=action[np.argmin(action)]
+    #lower=np.zeros(a_dim)
+    #y=np.zeros(a_dim)
+    
+    #adjust to z
+    z=tf.zeros(a_dim)
+    
+    #start algorithm#
+    phase=0                          #  lower=0 , upeer=1 , done=2
+    C_unclamp=tf.constant(env.nbikes)             # how many left bike to distribute
+    set_unclamp=set(range(a_dim))    # unclamp set
+    unclamp_num=tf.constant(a_dim)                # unclamp number=n'
+    grad_z=tf.zeros([a_dim,a_dim],tf.float64)   # grad_z is 4*4 arrray
+    
+    
+    while phase != 2 :
+        sum_y=tf.constant(0)
+        cond=np.zeros(a_dim)
+        set_clamp_round=set()  # indices clamped in this iteration of the while loop
+        #algorithm line 7
+        for i in range(a_dim):
+            if i in set_unclamp:
+                sum_y=sum_y+tf.gather(y,i) #need better way, can change to the tf.where method
+        for i in range(a_dim):
+            if i in set_unclamp:
+                cond[i]=True
+            else:
+                cond[i]=False #not calculate.
+        case_true=y+(C_unclamp-sum_y)/unclamp_num    
+        case_false=z
+        z=tf.where(cond,case_true,case_false)
+        print(z,"z")
+        print(sum_y,"sum_y")
+        condxy=np.zeros(a_dim,a_dim)
+        grad_operator=tf.zeros(a_dim,a_dim)  #make sure the tensor shape the same to do tf.where
+        #algorithm line 8
+        for i in range(a_dim):
+            if cond[i]==True:
+                for j in range(a_dim):
+                    if cond[j]==True:
+                        condxy[i][j]=True
+                    else:
+                        condxy[i][j]=False
+        case_grad_true=grad_operator-1/unclamp_num
+        case_grad_false=grad_operator+1-(1/unclamp_num)
+        grad_z=tf.where(condxy,case_grad_true,case_grad_false)
+        print(grad_z)
         
-        print("abound: ", a_bound)
+        #algorithm line 9
+        for j in range(a_dim):
+            if cond[j]==False:
+                for i in range(a_dim):
+                    condxy[i][j]=True
+            else:
+                condxy[i][j]=False
+        case_grad_0_true=grad_operator
+        case_grad_0_false=grad_z
+        grad_z=tf.where(cond,case_grad_0_true,case_grad_0_false)
+        print(grad_z,"grad before clamp in this iteration")
+        
+        '''modify above'''
+        
+        #algorithm lin 10~20
         for i in range(a_dim):
             y[i] = lower[i] + (a_bound[i]-lower[i]) * (action[i]-mina) / (maxa-mina)
         print("y: ", y)
@@ -236,12 +302,16 @@ class OptLayer(tf.keras.layers.Layer):
             final_sum = final_sum + z[i]
             assert lower[i] <= z[i] <= a_bound[i]   # make sure not violate the local constraint
         
-        final_sum = np.around(final_sum)
-        print('sum: {}, nbikes: {}'.format(final_sum, env.nbikes))
-        assert final_sum == env.nbikes     # make sure sum is equal to bike number
-        if np.sum(y) == env.nbikes:
-            assert z == y
-        return tf.convert_to_tensor(z)
+    #debug after optlayer
+    final_sum=0
+    for i in range(a_dim):           
+        final_sum=final_sum+z[i]
+        assert lower[i]<=z[i]<=a_bound[i]   # make sure not violate the local constraint 
+    assert final_sum==env.nbikes     # make sure sum is equal to bike number
+    if np.sum(y)==env.nbikes:
+        assert z==y
+        
+    return z
 
 ###############################  training  ####################################   
 Rs = []
@@ -253,7 +323,7 @@ print(a_dim,"YEEEEEEE")
 #print(env.action_space.low,"low")
 a_bound = env.action_space.high   #最大上限,txt裡面設定的
 
-ddpg = DDPG(a_dim, s_dim, a_bound, env)
+ddpg = DDPG(a_dim, s_dim, a_bound,env)
 
 var = 3  # control exploration
 
