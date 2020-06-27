@@ -166,17 +166,15 @@ def OptLayer_function(action,a_dim,a_bound,env):
     
     #adjust to z
     z=tf.zeros(a_dim)
-    
     #start algorithm#
     phase=0                          #  lower=0 , upeer=1 , done=2
-    C_unclamp=tf.constant(env.nbikes)             # how many left bike to distribute
+    C_unclamp=tf.Variable(float(env.nbikes))            # how many left bike to distribute
     set_unclamp=set(range(a_dim))    # unclamp set
-    unclamp_num=tf.constant(a_dim)                # unclamp number=n'
+    unclamp_num=tf.Variable(float(a_dim))                # unclamp number=n'
     grad_z=tf.zeros([a_dim,a_dim],tf.float64)   # grad_z is 4*4 arrray
     
-    
     while phase != 2 :
-        sum_y=tf.constant(0)
+        sum_y=tf.Variable(0.)
         cond=np.zeros(a_dim)
         set_clamp_round=set()  # indices clamped in this iteration of the while loop
         #algorithm line 7
@@ -188,13 +186,15 @@ def OptLayer_function(action,a_dim,a_bound,env):
                 cond[i]=True
             else:
                 cond[i]=False #not calculate.
-        case_true=y+(C_unclamp-sum_y)/unclamp_num    
+        case_true=y[0]+(C_unclamp-sum_y)/unclamp_num   
+        #print("y_QQQQQQQQQ",y[0])
         case_false=z
         z=tf.where(cond,case_true,case_false)
         print(z,"z")
         print(sum_y,"sum_y")
-        condxy=np.zeros(a_dim,a_dim)
-        grad_operator=tf.zeros(a_dim,a_dim)  #make sure the tensor shape the same to do tf.where
+        condxy=np.zeros([a_dim,a_dim])
+        grad_operator=tf.zeros([a_dim,a_dim])  #make sure the tensor shape the same to do tf.where
+        print("grad_op",grad_operator)
         #algorithm line 8
         for i in range(a_dim):
             if cond[i]==True:
@@ -203,8 +203,8 @@ def OptLayer_function(action,a_dim,a_bound,env):
                         condxy[i][j]=True
                     else:
                         condxy[i][j]=False
-        case_grad_true=grad_operator-1/unclamp_num
-        case_grad_false=grad_operator+1-(1/unclamp_num)
+        case_grad_true=grad_operator-(1.0/unclamp_num)
+        case_grad_false=grad_operator+1.0-(1.0/unclamp_num)
         grad_z=tf.where(condxy,case_grad_true,case_grad_false)
         print(grad_z)
         
