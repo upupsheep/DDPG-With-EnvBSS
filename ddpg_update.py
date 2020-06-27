@@ -62,6 +62,7 @@ class DDPG(object):
         self.memory = np.zeros((MEMORY_CAPACITY, s_dim * 2 + a_dim + 1), dtype=np.float32)
         self.pointer = 0
         self.sess = tf.Session()
+        self.env = env
 
         self.a_dim, self.s_dim, self.a_bound = a_dim, s_dim, a_bound,
         self.env=env
@@ -69,6 +70,7 @@ class DDPG(object):
         self.S_ = tf.placeholder(tf.float32, [None, s_dim], 's_')
         self.R = tf.placeholder(tf.float32, [None, 1], 'r')
 
+        # Randomly initialize critic network and actor network
         with tf.variable_scope('Actor'):
             self.a = self._build_a(self.S, scope='eval', trainable=True)
             a_ = self._build_a(self.S_, scope='target', trainable=False)
@@ -97,6 +99,9 @@ class DDPG(object):
         self.atrain = tf.train.AdamOptimizer(LR_A).minimize(a_loss, var_list=self.ae_params)
 
         self.sess.run(tf.global_variables_initializer())
+
+        
+        tf.summary.FileWriter("logs/", self.sess.graph)
 
     def choose_action(self, s):
         return self.sess.run(self.a, {self.S: s[np.newaxis, :]})[0]
@@ -224,30 +229,78 @@ def OptLayer_function(action,a_dim,a_bound,env):
         
         #algorithm lin 10~20
         for i in range(a_dim):
-            if i in set_unclamp:
-                if z[i]<lower[i] and phase==0 :
-                    z[i]=lower[i]
+            y[i] = lower[i] + (a_bound[i]-lower[i]) * (action[i]-mina) / (maxa-mina)
+        print("y: ", y)
+        # adjust to z
+        z = np.zeros(a_dim)
+    
+        # start algorithm#
+        phase = 0                        # lower=0 , upeer=1 , done=2
+        C_unclamp = env.nbikes           # how many left bike to distribute
+        set_unclamp = set(range(a_dim))  # unclamp set
+        unclamp_num = a_dim              # unclamp number=n'
+        grad_z = np.zeros((a_dim,a_dim)) # grad_z is 4*4 arrray
+        while phase != 2:
+            sum_y = 0
+            set_clamp_round = set()  # indices clamped in this iteration of the while loop
+            # algorithm line 7
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    sum_y = sum_y+y[i]
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    z[i] = y[i] + (C_unclamp-sum_y) / unclamp_num
+            print("z: ", z)
+            print("sum_y: ", sum_y)
+            # algorithm line8
+            for i in range(a_dim):
+                if i in set_unclamp:
                     for j in range(a_dim):
-                        grad_z[i][j]=0
-                    set_clamp_round.add(i)
-                elif (z[i]>a_bound[i]) and phase==1:
-                    z[i]=a_bound[i]
-                    for j in range(a_dim):
-                        grad_z[i][j]=0
-                    set_clamp_round.add(i)
-        print(z,"z_after clamp")
-        print(grad_z,"grad after clamp")
-        #algorithm 21~25
-        unclamp_num=unclamp_num-len(set_clamp_round)
-        print(unclamp_num,"unclamp")
-        for i in range(a_dim):
-            if i in set_clamp_round:
-                C_unclamp=C_unclamp-z[i]
-        print(C_unclamp,"C")
-        set_unclamp= set_unclamp.difference(set_clamp_round)
-        print(set_unclamp,"unclamp set")
-        if len(set_clamp_round)==0 :
-            phase=phase+1
+                        if j in set_unclamp:
+                            if (i != j):
+                                grad_z[i][j] = (-1) / unclamp_num 
+                            else:
+                                grad_z[i][j] = 1 - (1/unclamp_num)
+            print("grad_z: ", grad_z)
+            # algorithm line 9
+            for j in range(a_dim):
+                if j not in set_unclamp:
+                    for i in range(a_dim):
+                        grad_z[i][j] = 0
+            print("grad before clamp in this iteration: ", grad_z)
+            
+            # algorithm lin 10~20
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    if z[i] < lower[i] and phase == 0:
+                        z[i] = lower[i]
+                        for j in range(a_dim):
+                            grad_z[i][j] = 0
+                        set_clamp_round.add(i)
+                    elif (z[i] > a_bound[i]) and phase == 1:
+                        z[i] = a_bound[i]
+                        for j in range(a_dim):
+                            grad_z[i][j] = 0
+                        set_clamp_round.add(i)
+            print("z_after clamp: ", z)
+            print("grad after clamp: ", grad_z)
+            # algorithm 21~25
+            unclamp_num = unclamp_num - len(set_clamp_round)
+            print("unclamp: ", unclamp_num)
+            for i in range(a_dim):
+                if i in set_clamp_round:
+                    C_unclamp = C_unclamp - z[i]
+            print("C: ", C_unclamp)
+            set_unclamp = set_unclamp.difference(set_clamp_round)
+            print("unclamp set: ", set_unclamp)
+            if len(set_clamp_round) == 0:
+                phase = phase + 1
+            
+        # debug after optlayer
+        final_sum = 0
+        for i in range(a_dim):           
+            final_sum = final_sum + z[i]
+            assert lower[i] <= z[i] <= a_bound[i]   # make sure not violate the local constraint
         
     #debug after optlayer
     final_sum=0
@@ -265,7 +318,8 @@ Rs = []
 s_dim = env.observation_space.shape[0]  # 2*ZONE+1 , 前面ZONE個是Demand(這個ZONE被拿走幾台),後面ZONE個是number of resource on zone K (dS_) +time
 #又等於get_observe function in env
 a_dim = env.action_space.shape[0]
-#print(a_dim,"YEEEEEEE")
+print('nbikes: ', env.nbikes)
+print(a_dim,"YEEEEEEE")
 #print(env.action_space.low,"low")
 a_bound = env.action_space.high   #最大上限,txt裡面設定的
 
@@ -281,18 +335,18 @@ for ep in range(100):
     scenario = None
     done = False
     s = env.reset()  # [0,0,0,0,8,7,8,8,0]
-    print(s)
+    print("s: ", s)
     #policy = read_supriyo_policy_results(env)
     while not done:
         #action = None
-        action=ddpg.choose_action(s)
-        print(action,"x")
-        OptLayer_function(action,a_dim,a_bound,env)
+        action = ddpg.choose_action(s)
+        print("x: ", action)
+        # z, grad_z = OptLayer_function(action, a_dim, a_bound, env)
 
         # print(obs)
         #action = get_supriyo_policy_action(env, obs, policy)
         
-        #action = None
+        # action is now an feasible action
         s_, r, done, info = env.step(action)
         ddpg.store_transition(s, action, r / 10, s_)
         if ddpg.pointer > MEMORY_CAPACITY:
@@ -304,6 +358,7 @@ for ep in range(100):
         ld_dropoff += info["lost_demand_dropoff"]
         revenue += info["revenue"]
         scenario = info["scenario"]
+        print("==================\n")
         
     print({
         'episode': ep,
