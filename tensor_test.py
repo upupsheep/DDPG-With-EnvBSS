@@ -82,3 +82,34 @@ print(sess.run(z))
 '''gather test'''
 g=tf.constant([1,2,3,4])
 print(sess.run(tf.gather(g,2)))
+
+
+import tensorflow as tf
+x = tf.constant([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+sets = tf.constant([1, 5, 7])
+y = tf.constant([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+y2 = tf.tensor_scatter_nd_update(y, tf.expand_dims(sets, 1), tf.gather(x, sets))
+print(sess.run(y2))
+# [0 2 0 0 0 6 0 8 0 0]
+
+#compare test
+acompare = tf.constant([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+bcompare= tf.constant([2,1,5,6,7,4,2,7,8,1])
+
+mask = tf.greater(acompare, bcompare)
+slices = tf.boolean_mask(acompare, mask)
+print(sess.run(slices))
+
+#share the dense layer , using reuse
+import tensorflow as tf
+x1 = tf.placeholder(dtype=tf.float32, shape=[None, 3], name="x1")
+x2 = tf.placeholder(dtype=tf.float32, shape=[None, 3], name="x2")
+with tf.variable_scope("myscope") as scope:
+	l1 = tf.layers.Dense(units=2)
+	h11 = l1(x1)
+with tf.variable_scope("myscope",reuse=True) as scope:
+	l2 = tf.layers.Dense(units=2)
+	h12 = l2(x2)
+with tf.Session() as sess:
+	sess.run(tf.global_variables_initializer())
+	print(sess.run([h11, h12], feed_dict={x1: [[1, 2, 3]], x2: [[2, 4, 6]]}))
