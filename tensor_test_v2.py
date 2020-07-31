@@ -202,6 +202,8 @@ def Numpy_opt(action,a_dim,a_bound):
         
     #debug after optlayer
     final_sum=0
+    print(z)
+    print(grad_z)
 def OptLayer_function(action, a_dim, a_bound):
         # adjust to y
     print(action,"action")
@@ -301,13 +303,13 @@ def OptLayer_function(action, a_dim, a_bound):
             temp_z=grad_z
         elif phase == 1:
             mask2 = tf.greater(z, tfa_bound)
-            for i in range(a_dim):
-                if i not in set_unclamp:
-                    mask2[i] = False
-            tempmask=mask2 #T,F,F,F
             print(mask2,"maske_type")
             proto_tensor=tf.make_tensor_proto(mask2)
             ndarry=tf.make_ndarray(proto_tensor)
+            
+            for i in range(a_dim):
+                if i not in set_unclamp:
+                    ndarry[i] = False
             print(ndarry,"change to arrray")
             z = tf.compat.v1.where(mask2, tfa_bound, z)
             tempmask=mask2
@@ -353,7 +355,8 @@ def OptLayer_function(action, a_dim, a_bound):
     z_reshape = tf.reshape(z, (1, z_shape))
     print("z_reshape: ", z_reshape.shape)
     
-    
+    print(z)
+    print(grad_z)
     return z_reshape, grad_z
 
 action=tf.Variable([20.,10.,6.,9.],dtype=tf.float64)
@@ -361,4 +364,5 @@ a_dim=4
 a_bound=[11., 19. ,18., 12.]
 
 OptLayer_function(action,a_dim,a_bound)
+print("--------------------------------------------------------")
 Numpy_opt([20,10,6,9],4,[11,19,18,12])
