@@ -204,16 +204,16 @@ def Numpy_opt(action,a_dim,a_bound):
     final_sum=0
 def OptLayer_function(action, a_dim, a_bound):
         # adjust to y
-    print(action)
+    print(action,"action")
     
-    maxa = tf.reduce_max(action)
-    mina = tf.reduce_min(action)
+    maxa = tf.reduce_max(input_tensor=action)
+    mina = tf.reduce_min(input_tensor=action)
     lower = tf.zeros(a_dim,dtype=tf.float64)
-    tfa_bound = tf.convert_to_tensor(a_bound,dtype=tf.float64)
+    tfa_bound = tf.convert_to_tensor(value=a_bound,dtype=tf.float64)
     y = tf.zeros(a_dim,tf.float64)
     y = lower+(tfa_bound-lower)*(action-mina)/(maxa-mina)    
     
-    print(y)
+    print(y,"y")
     # maxa=action[tf.math.argmax(action)]
     # mina=action[np.argmin(action)]
     # lower=np.zeros(a_dim)
@@ -248,12 +248,12 @@ def OptLayer_function(action, a_dim, a_bound):
                 cond[i] = False  # not calculate.
         case_sum_true=y
         case_sum_false=tf.zeros(a_dim,dtype=tf.float64)
-        sum_y=tf.where(cond,case_sum_true,case_sum_false)
-        sum_y=tf.reduce_sum(y)
+        sum_y=tf.compat.v1.where(cond,case_sum_true,case_sum_false)
+        sum_y=tf.reduce_sum(input_tensor=y)
         print(cond,"cond test")
         case_true = y+(C_unclamp-sum_y)/unclamp_num
         case_false = z
-        z = tf.where(cond, case_true, case_false)
+        z = tf.compat.v1.where(cond, case_true, case_false)
         condxy = np.zeros([a_dim, a_dim])
         # make sure the tensor shape the same to do tf.where
         grad_operator = tf.zeros([a_dim, a_dim],dtype=tf.float64)
@@ -267,7 +267,7 @@ def OptLayer_function(action, a_dim, a_bound):
                         condxy[i][j] = True
         case_grad_true = grad_operator-(1.0/unclamp_num)
         case_grad_false = grad_operator+1.0-(1.0/unclamp_num)
-        grad_z = tf.where(condxy, case_grad_true, case_grad_false)
+        grad_z = tf.compat.v1.where(condxy, case_grad_true, case_grad_false)
         
         print(cond)
         # algorithm line 9
@@ -280,7 +280,7 @@ def OptLayer_function(action, a_dim, a_bound):
                     condxy[i][j] = False
         case_grad_0_true = grad_operator
         case_grad_0_false = grad_z
-        grad_z = tf.where(condxy, case_grad_0_true, case_grad_0_false)
+        grad_z = tf.compat.v1.where(condxy, case_grad_0_true, case_grad_0_false)
         # algorithm lin 10~20
         if phase == 0:
             mask = tf.greater(lower, z)
@@ -288,8 +288,7 @@ def OptLayer_function(action, a_dim, a_bound):
                 if i not in set_unclamp:
                     mask[i] = False
             tempmask=mask
-            z = tf.where(mask, lower, z)  # true,means i>z
-           
+            z = tf.compat.v1.where(mask, lower, z)  # true,means i>z
             for i in range(a_dim):
                 if mask[i] == True:
                     set_clamp_round.add(i)
@@ -298,7 +297,7 @@ def OptLayer_function(action, a_dim, a_bound):
                 else:
                     for j in range(a_dim):
                         condxy[i][j] = False
-            grad_z = tf.where(condxy, grad_operator, grad_z)
+            grad_z = tf.compat.v1.where(condxy, grad_operator, grad_z)
             temp_z=grad_z
         elif phase == 1:
             mask2 = tf.greater(z, tfa_bound)
@@ -310,18 +309,17 @@ def OptLayer_function(action, a_dim, a_bound):
             proto_tensor=tf.make_tensor_proto(mask2)
             ndarry=tf.make_ndarray(proto_tensor)
             print(ndarry,"change to arrray")
-            z = tf.where(mask2, tfa_bound, z)
+            z = tf.compat.v1.where(mask2, tfa_bound, z)
             tempmask=mask2
             for i in range(a_dim):
                 if mask2[i] == True:
                     set_clamp_round.add(i)
-                    print("QQQQQQQQQQQQQQQQQQQQQ")
                     for j in range(a_dim):
                         condxy[i][j] = True
                 else:
                     for j in range(a_dim):
                         condxy[i][j] = False
-            grad_z = tf.where(condxy, grad_operator, grad_z)
+            grad_z = tf.compat.v1.where(condxy, grad_operator, grad_z)
             temp_z=grad_z
             print(set_clamp_round,"IME here")
         ''''''
