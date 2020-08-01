@@ -145,6 +145,7 @@ def Numpy_opt(action,a_dim,a_bound):
     unclamp_num=a_dim                # unclamp number=n'
     grad_z=np.zeros((a_dim,a_dim))   # grad_z is 4*4 arrray
     while phase != 2 :
+        print("-----first loop----")
         sum_y=0
         set_clamp_round=set()  # indices clamped in this iteration of the while loop
         #algorithm line 7
@@ -187,7 +188,7 @@ def Numpy_opt(action,a_dim,a_bound):
                         grad_z[i][j]=0
                     set_clamp_round.add(i)
         print(z,"z_after clamp")
-        print(grad_z,"grad after clamp")
+        #print(grad_z,"grad after clamp")
         #algorithm 21~25
         unclamp_num=unclamp_num-len(set_clamp_round)
         print(unclamp_num,"unclamp")
@@ -199,11 +200,13 @@ def Numpy_opt(action,a_dim,a_bound):
         print(set_unclamp,"unclamp set")
         if len(set_clamp_round)==0 :
             phase=phase+1
+        print(grad_z,"grad_z this round")
         
     #debug after optlayer
     final_sum=0
     print(z)
     print(grad_z)
+    
 def OptLayer_function(action, a_dim, a_bound):
         # adjust to y
     print(action,"action")
@@ -251,7 +254,8 @@ def OptLayer_function(action, a_dim, a_bound):
         case_sum_true=y
         case_sum_false=tf.zeros(a_dim,dtype=tf.float64)
         sum_y=tf.compat.v1.where(cond,case_sum_true,case_sum_false)
-        sum_y=tf.reduce_sum(input_tensor=y)
+        sum_y=tf.reduce_sum(input_tensor=sum_y)
+        print(sum_y)
         print(cond,"cond test")
         case_true = y+(C_unclamp-sum_y)/unclamp_num
         case_false = z
@@ -259,7 +263,19 @@ def OptLayer_function(action, a_dim, a_bound):
         condxy = np.zeros([a_dim, a_dim])
         # make sure the tensor shape the same to do tf.where
         grad_operator = tf.zeros([a_dim, a_dim],dtype=tf.float64)
-        # algorithm line 8
+        # algorithm line 8  3 phase to change 
+        for i in range(a_dim): 
+            for j in range(a_dim):
+                if i not in set_unclamp:
+                    condxy[i][j]=False
+                elif j not in set_unclamp:
+                    condxy[i][j]=False
+                else :
+                    condxy[i][j]=True
+        case_grad_false=grad_z
+        case_grad_true=grad_operator+1.0-(1.0/unclamp_num)
+        grad_z=tf.compat.v1.where(condxy,case_grad_true,case_grad_false)
+        
         for i in range(a_dim):
             if cond[i] == True:
                 for j in range(a_dim):
@@ -268,10 +284,9 @@ def OptLayer_function(action, a_dim, a_bound):
                     else:
                         condxy[i][j] = True
         case_grad_true = grad_operator-(1.0/unclamp_num)
-        case_grad_false = grad_operator+1.0-(1.0/unclamp_num)
+        case_grad_false = grad_z
         grad_z = tf.compat.v1.where(condxy, case_grad_true, case_grad_false)
         
-        print(cond)
         # algorithm line 9
         for j in range(a_dim):
             if cond[j] == False:
@@ -280,19 +295,21 @@ def OptLayer_function(action, a_dim, a_bound):
             else:
                 for i in range(a_dim):
                     condxy[i][j] = False
+        print(condxy,"BUFFFFF")
         case_grad_0_true = grad_operator
         case_grad_0_false = grad_z
         grad_z = tf.compat.v1.where(condxy, case_grad_0_true, case_grad_0_false)
         # algorithm lin 10~20
         if phase == 0:
             mask = tf.greater(lower, z)
+            proto_tensor=tf.make_tensor_proto(mask)
+            ndarry=tf.make_ndarray(proto_tensor)
             for i in range(a_dim):
                 if i not in set_unclamp:
-                    mask[i] = False
-            tempmask=mask
+                    ndarry[i] = False
             z = tf.compat.v1.where(mask, lower, z)  # true,means i>z
             for i in range(a_dim):
-                if mask[i] == True:
+                if ndarry[i] == True:
                     set_clamp_round.add(i)
                     for j in range(a_dim):
                         condxy[i][j] = True
@@ -312,15 +329,15 @@ def OptLayer_function(action, a_dim, a_bound):
                     ndarry[i] = False
             print(ndarry,"change to arrray")
             z = tf.compat.v1.where(mask2, tfa_bound, z)
-            tempmask=mask2
             for i in range(a_dim):
-                if mask2[i] == True:
+                if ndarry[i] == True:
                     set_clamp_round.add(i)
                     for j in range(a_dim):
                         condxy[i][j] = True
                 else:
                     for j in range(a_dim):
                         condxy[i][j] = False
+            
             grad_z = tf.compat.v1.where(condxy, grad_operator, grad_z)
             temp_z=grad_z
             print(set_clamp_round,"IME here")
@@ -338,18 +355,20 @@ def OptLayer_function(action, a_dim, a_bound):
      #       sess.run(tf.global_variables_initializer())
         first=False
     #    print(sess.run([y,tempmask]))
+        print(z,"Z in this round")
+        print(grad_z,"grad_z this round")
 
     # debug after optlayer
-    final_sum = 0
-    """
-    for i in range(a_dim):
-        final_sum=final_sum+z[i]
-        # make sure not violate the local constraint
-        assert lower[i]<=z[i]<=a_bound[i]
-    assert final_sum==env.nbikes     # make sure sum is equal to bike number
-    if np.sum(y)==env.nbikes:
-        assert z==y
-        """
+    final_sum =tf.reduce_sum(input_tensor=z)
+    assert final_sum==30
+    mask=tf.greater(lower, z)
+    mask2=tf.greater(z,a_bound)
+    proto_tensor=tf.make_tensor_proto(mask)
+    ndarry=tf.make_ndarray(proto_tensor)
+    proto_tensor=tf.make_tensor_proto(mask2)
+    ndarry2=tf.make_ndarray(proto_tensor)
+    assert (ndarry==ndarry2).all() and (ndarry==False).all()
+
     z_shape = z.shape[0]
     print("z shape: ", z_shape)
     z_reshape = tf.reshape(z, (1, z_shape))
@@ -357,6 +376,7 @@ def OptLayer_function(action, a_dim, a_bound):
     
     print(z)
     print(grad_z)
+    print(z_reshape)
     return z_reshape, grad_z
 
 action=tf.Variable([20.,10.,6.,9.],dtype=tf.float64)
