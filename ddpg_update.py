@@ -51,8 +51,8 @@ def read_supriyo_policy_results(env):
         line = line.strip(" \n")
         line = line.split(",")
         if(int(line[0]) < 100):
-            ypcmu[int(line[0]) + 1][int(line[1])] = float(line[2])  # 移出
-            yncmu[int(line[0]) + 1][int(line[1])] = float(line[3])  # 移入
+            ypcmu[int(line[0]) + 1][int(line[1])] = float(line[2])  # move out
+            yncmu[int(line[0]) + 1][int(line[1])] = float(line[3])  # move in
         line = f1.readline()
     f1.close()
     return (ypcmu, yncmu)
@@ -334,15 +334,17 @@ def OptLayer_function(action, a_dim, a_bound, env):
 
 ###############################  training  ####################################
 Rs = []
-# 2*ZONE+1 , 前面ZONE個是Demand(這個ZONE被拿走幾台),後面ZONE個是number of resource on zone K (dS_) +time
+# 2*ZONE+1
+# the first ZONE number is demand(i.e. how many bikes are taken away in this ZONE)
+# the last ZONE number is the amount of resource on zone K (dS_) + time
 s_dim = env.observation_space.shape[0]
 print(s_dim)
-# 又等於get_observe function in env
+# equal to get_observe function in env
 a_dim = env.action_space.shape[0]
 s = env.reset()
 # print(a_dim,"YEEEEEEE")
 # print(env.action_space.low,"low")
-a_bound = env.action_space.high  # 最大上限,txt裡面設定的
+a_bound = env.action_space.high  # higher bound, which is set in the .txt file
 
 ddpg = DDPG(a_dim, s_dim, a_bound, env, s)
 
