@@ -72,6 +72,8 @@ def MyCapper(gv, grad):
 
 class DDPG(object):
     def __init__(self, a_dim, s_dim, a_bound, env, s_init):
+        tf.compat.v1.disable_eager_execution()
+
         self.memory = np.zeros(
             (MEMORY_CAPACITY, s_dim * 2 + a_dim + 1), dtype=np.float32)
         self.pointer = 0
@@ -167,8 +169,8 @@ class DDPG(object):
             print(a, "a")
             a = tf.multiply(a, self.a_bound, name='scaled_a')
             print(a, "a")
-            # a, grad = OptLayer_function(a, self.a_dim, self.a_bound, self.env)
-            grad = 0
+            a, grad = OptLayer_function(a, self.a_dim, self.a_bound, self.env)
+            # grad = 0
             print(a, "a_after_opt")
             print(grad)
             return a, grad
@@ -188,94 +190,109 @@ class DDPG(object):
 
 
 def OptLayer_function(action, a_dim, a_bound, env):
-    # adjust to y
-    print(type(action))
-    print(action)
-    with tf.compat.v1.variable_scope("Optlayer"):
-        maxa = tf.reduce_max(input_tensor=action)
-        mina = tf.reduce_min(input_tensor=action)
-        lower = tf.zeros(a_dim)
-        tfa_bound = tf.convert_to_tensor(value=a_bound)
-        y = tf.zeros(a_dim)
-        y = lower+(tfa_bound-lower)*(action-mina)/(maxa-mina)
-        print("maxa: ", maxa)
-        print("mina: ", mina)
-        print("lower: ", lower)
-        print("tfa_bound: ", tfa_bound)
-        print("y", y)
+        # adjust to y
+    print(action,"action")
+    
+    maxa = tf.reduce_max(input_tensor=action)
+    mina = tf.reduce_min(input_tensor=action)
+    print("maxa: ", maxa)
+    lower = tf.zeros(a_dim, dtype=tf.float64)
+    tfa_bound = tf.convert_to_tensor(value=a_bound, dtype=tf.float64)
+    y = tf.zeros(a_dim, dtype=tf.float64)
+    y = lower+(tfa_bound-lower)*(action-mina)/(maxa-mina)    
+    
+    print(y,"y")
     # maxa=action[tf.math.argmax(action)]
     # mina=action[np.argmin(action)]
     # lower=np.zeros(a_dim)
     # y=np.zeros(a_dim)
 
     # adjust to z
-    z = tf.zeros(a_dim)
+    z = tf.zeros(a_dim,dtype=tf.float64)
     # start algorithm#
     phase = 0  # lower=0 , upeer=1 , done=2
     # how many left bike to distribute
-    C_unclamp = tf.Variable(float(env.nbikes))
+    C_unclamp = tf.Variable(float(30),dtype=tf.float64)
     set_unclamp = set(range(a_dim))    # unclamp set
-    unclamp_num = tf.Variable(float(a_dim))                # unclamp number=n'
-    grad_z = tf.zeros([a_dim, a_dim], tf.float64)   # grad_z is 4*4 arrray
-
+    unclamp_num = tf.Variable(float(a_dim),dtype=tf.float64)                # unclamp number=n'
+    grad_z = tf.zeros([a_dim, a_dim], dtype=tf.float64)   # grad_z is 4*4 arrray
+    first=True
     while phase != 2:
         sum_y = tf.Variable(0.)
         cond = np.zeros(a_dim)
         set_clamp_round = set()  # indices clamped in this iteration of the while loop
         # algorithm line 7
+        """
         for i in range(a_dim):
             if i in set_unclamp:
                 # need better way, can change to the tf.where method
                 sum_y = sum_y+tf.gather(y, i)
+               """
+        
         for i in range(a_dim):
             if i in set_unclamp:
                 cond[i] = True
             else:
                 cond[i] = False  # not calculate.
-        case_true = y[0]+(C_unclamp-sum_y)/unclamp_num
-        print("y_0", y[0])
+        case_sum_true=y
+        case_sum_false=tf.zeros(a_dim,dtype=tf.float64)
+        sum_y=tf.compat.v1.where(cond,case_sum_true,case_sum_false)
+        sum_y=tf.reduce_sum(input_tensor=sum_y)
+        print(sum_y)
+        print(cond,"cond test")
+        case_true = y+(C_unclamp-sum_y)/unclamp_num
         case_false = z
         z = tf.compat.v1.where(cond, case_true, case_false)
-        print(z, "z")
-        print(sum_y, "sum_y")
         condxy = np.zeros([a_dim, a_dim])
         # make sure the tensor shape the same to do tf.where
-        grad_operator = tf.zeros([a_dim, a_dim])
-        print("grad_op", grad_operator)
-        # algorithm line 8
+        grad_operator = tf.zeros([a_dim, a_dim],dtype=tf.float64)
+        # algorithm line 8  3 phase to change 
+        for i in range(a_dim): 
+            for j in range(a_dim):
+                if i not in set_unclamp:
+                    condxy[i][j]=False
+                elif j not in set_unclamp:
+                    condxy[i][j]=False
+                else :
+                    condxy[i][j]=True
+        case_grad_false=grad_z
+        case_grad_true=grad_operator+1.0-(1.0/unclamp_num)
+        grad_z=tf.compat.v1.where(condxy,case_grad_true,case_grad_false)
+        
         for i in range(a_dim):
             if cond[i] == True:
                 for j in range(a_dim):
-                    if cond[j] == True:
-                        condxy[i][j] = True
-                    else:
+                    if cond[j] == True and i==j:
                         condxy[i][j] = False
+                    else:
+                        condxy[i][j] = True
         case_grad_true = grad_operator-(1.0/unclamp_num)
-        case_grad_false = grad_operator+1.0-(1.0/unclamp_num)
+        case_grad_false = grad_z
         grad_z = tf.compat.v1.where(condxy, case_grad_true, case_grad_false)
-        print(grad_z)
-
+        
         # algorithm line 9
         for j in range(a_dim):
             if cond[j] == False:
                 for i in range(a_dim):
                     condxy[i][j] = True
             else:
-                condxy[i][j] = False
+                for i in range(a_dim):
+                    condxy[i][j] = False
+        print(condxy,"BUFFFFF")
         case_grad_0_true = grad_operator
         case_grad_0_false = grad_z
-        grad_z = tf.compat.v1.where(cond, case_grad_0_true, case_grad_0_false)
-        print(grad_z, "grad before clamp in this iteration")
-
+        grad_z = tf.compat.v1.where(condxy, case_grad_0_true, case_grad_0_false)
         # algorithm lin 10~20
         if phase == 0:
             mask = tf.greater(lower, z)
+            proto_tensor=tf.make_tensor_proto(mask)
+            ndarry=tf.make_ndarray(proto_tensor)
             for i in range(a_dim):
                 if i not in set_unclamp:
-                    mask[i] = False
+                    ndarry[i] = False
             z = tf.compat.v1.where(mask, lower, z)  # true,means i>z
             for i in range(a_dim):
-                if mask[i] == True:
+                if ndarry[i] == True:
                     set_clamp_round.add(i)
                     for j in range(a_dim):
                         condxy[i][j] = True
@@ -283,52 +300,66 @@ def OptLayer_function(action, a_dim, a_bound, env):
                     for j in range(a_dim):
                         condxy[i][j] = False
             grad_z = tf.compat.v1.where(condxy, grad_operator, grad_z)
+            temp_z=grad_z
         elif phase == 1:
-            mask2 = tf.greater(z, a_bound)
+            mask2 = tf.greater(z, tfa_bound)
+            print(mask2,"maske_type")
+            proto_tensor=tf.make_tensor_proto(mask2)
+            ndarry=tf.make_ndarray(proto_tensor)
+            
             for i in range(a_dim):
                 if i not in set_unclamp:
-                    mask2[i] = False
-            z = tf.compat.v1.where(mask2, a_bound, z)
+                    ndarry[i] = False
+            print(ndarry,"change to arrray")
+            z = tf.compat.v1.where(mask2, tfa_bound, z)
             for i in range(a_dim):
-                if mask2[i] == True:
+                if ndarry[i] == True:
                     set_clamp_round.add(i)
                     for j in range(a_dim):
                         condxy[i][j] = True
                 else:
                     for j in range(a_dim):
                         condxy[i][j] = False
+            
             grad_z = tf.compat.v1.where(condxy, grad_operator, grad_z)
-        print(z, "z_after clamp")
-        print(grad_z, "grad after clamp")
-
-        '''modify above'''
+            temp_z=grad_z
+            print(set_clamp_round,"IME here")
+        ''''''
         # algorithm 21~25
         unclamp_num = unclamp_num-len(set_clamp_round)
-        print(unclamp_num, "unclamp")
         for i in range(a_dim):
             if i in set_clamp_round:
                 C_unclamp = C_unclamp-z[i]
-        print(C_unclamp, "C")
         set_unclamp = set_unclamp.difference(set_clamp_round)
-        print(set_unclamp, "unclamp set")
         if len(set_clamp_round) == 0:
             phase = phase+1
+       # if(first==True):
+      #      sess=tf.Session()
+     #       sess.run(tf.global_variables_initializer())
+        first=False
+    #    print(sess.run([y,tempmask]))
+        print(z,"Z in this round")
+        print(grad_z,"grad_z this round")
 
     # debug after optlayer
-    final_sum = 0
-    """
-    for i in range(a_dim):
-        final_sum=final_sum+z[i]
-        # make sure not violate the local constraint
-        assert lower[i]<=z[i]<=a_bound[i]
-    assert final_sum==env.nbikes     # make sure sum is equal to bike number
-    if np.sum(y)==env.nbikes:
-        assert z==y
-        """
+    final_sum =tf.reduce_sum(input_tensor=z)
+    assert final_sum==30
+    mask=tf.greater(lower, z)
+    mask2=tf.greater(z,a_bound)
+    proto_tensor=tf.make_tensor_proto(mask)
+    ndarry=tf.make_ndarray(proto_tensor)
+    proto_tensor=tf.make_tensor_proto(mask2)
+    ndarry2=tf.make_ndarray(proto_tensor)
+    assert (ndarry==ndarry2).all() and (ndarry==False).all()
+
     z_shape = z.shape[0]
     print("z shape: ", z_shape)
     z_reshape = tf.reshape(z, (1, z_shape))
     print("z_reshape: ", z_reshape.shape)
+    
+    print(z)
+    print(grad_z)
+    print(z_reshape)
     return z_reshape, grad_z
 
 
