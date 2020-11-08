@@ -40,6 +40,7 @@ np_clipping = np.vectorize(clipping)  # vectorize the python function
 
 
 def d_clipping(x):
+    print("(d) input x: ", x)
     max_i = np.argmax(x)
     min_i = np.argmin(x)
 
