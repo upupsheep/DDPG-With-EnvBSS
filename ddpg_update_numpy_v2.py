@@ -72,15 +72,11 @@ def clipping_acti_func(action_mtx):
     # print("x: ", action_mtx[0])
     action = action_mtx[0] * a_bound  # [[xx, xx, xx, xx]], and scaled_a here
     # print("scaled x: ", action)
-    # check if all elements are in the bound
     # adjust to y
     maxa = action[int(np.argmax(action))]
     mina = action[int(np.argmin(action))]
     lower = np.zeros(a_dim)
     y = np.zeros(a_dim)
-    if np.all(action <= a_bound) and np.all(action >= lower):
-        # print("no need to clip!!!")
-        return action
 
     # Avoid [nan nan nan nan]
     # '''
@@ -95,7 +91,11 @@ def clipping_acti_func(action_mtx):
     # print(env.nbikes, "bike_num")
     # print(a_bound, "abound")
     for i in range(a_dim):
-        y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
+        # if x[k] is in the bound, then no need to clip
+        if action[i] <= a_bound[i] and action[i] >= lower[i]:
+            y[i] = action[i]
+        else:
+            y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
     # print("y: ", y)
     # print("------------------\n")
     return y

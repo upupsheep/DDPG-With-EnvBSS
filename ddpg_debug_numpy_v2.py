@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 import os.path
 import sys
+import math
 
 import gym
 import numpy as np
@@ -22,8 +23,8 @@ LR_A = 0.001
 LR_C = 0.002
 GAMMA = 0.9
 TAU = 0.01
-MEMORY_CAPACITY = 2  # 10000
-BATCH_SIZE = 32
+MEMORY_CAPACITY = 4  # 10000
+BATCH_SIZE = 2  # 32
 #####################  BSS data functions  ####################
 
 
@@ -65,28 +66,38 @@ def read_supriyo_policy_results(env):
 
 
 def clipping_acti_func(action_mtx):
-    # print("action_mtx: ", action_mtx)
-    action = action_mtx[0]  # [[xx, xx, xx, xx]]
-    # action = np.ndarray.flatten(action)
-    print("a_dim", a_dim)
-    print("a_bound", a_bound)
-    print("type of action: ", type(action))
+    # print("\n--- In clipping activation function ---")
+    # print("a_bound: ", a_bound)
+    # print("action mtx: ", action_mtx)
+    # print("x: ", action_mtx[0])
+    action = action_mtx[0] * a_bound  # [[xx, xx, xx, xx]], and scaled_a here
+    # print("scaled x: ", action)
+    # check if all elements are in the bound
     # adjust to y
-    print("action: ", action)
-    # exit(0)
-    print("shape of action: ", np.shape(action))
-    print("argmax: ", type(np.argmax(action)))
-    # print("test: ", action[0])
     maxa = action[int(np.argmax(action))]
     mina = action[int(np.argmin(action))]
     lower = np.zeros(a_dim)
     y = np.zeros(a_dim)
-    # print(env.nbikes,"bike_num")
+    if np.all(action <= a_bound) and np.all(action >= lower):
+        # print("no need to clip!!!")
+        return action
 
-    # print(a_bound,"abound")
+    # Avoid [nan nan nan nan]
+    # '''
+    is_nan = []
+    for a in action:
+        is_nan.append(math.isnan(a))
+    # print("is nan: ", is_nan)
+    if np.all(is_nan):
+        return np.array(a_bound)
+    # '''
+
+    # print(env.nbikes, "bike_num")
+    # print(a_bound, "abound")
     for i in range(a_dim):
         y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
-    print("y: ", y)
+    # print("y: ", y)
+    # print("------------------\n")
     return y
 
 
@@ -106,37 +117,25 @@ def py_func(func, inp, Tout, stateful=True, name=None, grad=None):
 
 
 def clipping_grad(op, grad):
-    print("*** clipping grad ***")
-    print("op =", op.inputs[0])
     x = op.inputs[0]
     n_gr = tf_clipping_acti_func(x)  # defining the gradient
-    print("\n")
     return grad * n_gr
 
 
-# def np_clipping_acti_func_32(x):
-    # return np_clipping_acti_func(x).astype(np.float32)
 def np_clipping_acti_func_32(x):
     return clipping_acti_func(x).astype(np.float32)
 
 
 def tf_clipping_acti_func(x, name=None):
     with tf.compat.v1.name_scope(name, "clipping_acti_func", [x]) as name:
-        print("HERE!!! ", x)
         y = py_func(np_clipping_acti_func_32,  # forward pass function
                     [x],
                     [tf.float32],
                     name=name,
                     grad=clipping_grad)  # the function that overrides gradient
 
-        # print("yyy: ", y)
-        # print("x.get_shape(): ", x.get_shape())
         # when using with the code, it is used to specify the rank of the input.
         y[0].set_shape(x.get_shape())
-
-        # print("y[0]: ", y[0])
-        print("y: ", y[0])
-        # print(y[0].shape)
         return y[0]
 
 
@@ -155,13 +154,11 @@ class DDPG(object):
         with tf.compat.v1.variable_scope('Actor'):
             self.a = self._build_a(self.S, scope='eval', trainable=True)
             a_ = self._build_a(self.S_, scope='target', trainable=False)
-            # a: (Line 147) self.a = Tensor("Actor/eval/scaled_a:0", shape=(None, 4), dtype=float32)
-            # a.clip: (Line 147) self.a = Tensor("Actor/eval/scaled_a:0", shape=(None, 4), dtype=float32)
         with tf.compat.v1.variable_scope('Critic'):
             # assign self.a = a in memory when calculating q for td_error,
             # otherwise the self.a is from Actor when updating Actor
             q = self._build_c(self.S, self.a, scope='eval', trainable=True)
-            q_ = self._build_c(self.S_, a_, scope='target', trainable=True)
+            q_ = self._build_c(self.S_, a_, scope='target', trainable=False)
 
         # networks parameters
         self.ae_params = tf.compat.v1.get_collection(
@@ -186,29 +183,31 @@ class DDPG(object):
 
         optimizer = tf.compat.v1.train.GradientDescentOptimizer(LR_A)
         a_loss = - tf.reduce_mean(input_tensor=q)    # maximize the q
-        self.grads_and_vars = optimizer.compute_gradients(
-            a_loss, self.ae_params)
+        self.grads_and_vars = list(optimizer.compute_gradients(
+            a_loss, self.ae_params))
+        # print("grad[2]: ", self.grads_and_vars[2][0])
+        # self.grads_and_vars = [((grad @ opt_grad), var)
+        #                        for grad, var in self.grads_and_vars_noOpt]
+        # for grad, var in self.grads_and_vars:
+        self.grads_and_vars[2] = (
+            self.grads_and_vars[2][0] @ opt_grad, self.grads_and_vars[2][1])
+
+        # print("grad_and_vars: ", self.grads_and_vars)
        # self.optgrad=tf.zeros([a_dim, a_dim])
        # self.gv_opt_fn=[(gv[0]*self.optgrad,gv[1])for gv in self.grads_and_vars]
         self.opttrain = optimizer.apply_gradients(self.grads_and_vars)
 
-        print("a_loss: ", a_loss)
-        print("self.ae_params: ", self.ae_params)
+        # print("a_loss: ", a_loss)
+        # print("self.ae_params: ", self.ae_params)
         self.atrain = tf.compat.v1.train.AdamOptimizer(
             LR_A).minimize(a_loss, var_list=self.ae_params)
 
         self.sess.run(tf.compat.v1.global_variables_initializer())
 
     def choose_action(self, s):
-        # print(s.shape,"QQQQQQQQQQQQQQQQQQQQQWWWWWW")   #9
-        # print(s[np.newaxis, :].shape) #(1,9)
-        # print("self.sess.run: ", self.sess.run(self.a, {self.S: s[np.newaxis, :]}))
-        print("self.a: ", self.a)
-        # a = self.sess.run(self.a, {self.S: s[np.newaxis, :]})
-        # print("choose_action: ", a)
-        # exit(0)
-        return self.sess.run(self.a, {self.S: s[np.newaxis, :]})[0]
-        # return a[0]
+        # print("self.a: ", self.a)
+        return self.sess.run(self.a, {self.S: s[np.newaxis, :]})
+        # return self.sess.run(self.a, {self.S: s[np.newaxis, :]})[0]
 
     def learn(self):
         # soft target replacement
@@ -221,23 +220,26 @@ class DDPG(object):
         br = bt[:, -self.s_dim - 1: -self.s_dim]
         bs_ = bt[:, -self.s_dim:]
 
+        # '''
         a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
         # one more layer 9,2>>11,2  but add (a_loss,self.ae_params) become 4,2
-        print("=== g ===")
-        print(g)
-        print("=========")
-        print(g[0][0].shape)
-        print(g[0][1].shape)
-        print("Q")
-        print(g[1][0].shape)
-        print("Q")
-        print(g[1][1].shape)
-        print("QQ")
-        print(g[2][0].shape)
-        print(g[2][1].shape)
-        print(g[3][0].shape)
-        print(g[3][1].shape)
-        print(g.gg)  # to terminal
+        # print("=== g ===")
+        # print(np.array(g).shape)
+        # print("=========")
+        # print(g[0][0].shape)
+        # print(g[0][1].shape)
+        # print("Q")
+        # print(g[1][0].shape)
+        # print("Q")
+        # print(g[1][1].shape)
+        # print("QQ")
+        # print(g[2][0].shape)
+        # print(g[2][1].shape)
+        # print(g[3][0].shape)
+        # print(g[3][1].shape)
+        # print(g.gg)  # to terminal
+        # '''
+        # self.sess.run(self.atrain, {self.S: bs})
 
         self.sess.run(self.ctrain, {self.S: bs,
                                     self.a: ba, self.R: br, self.S_: bs_})
@@ -255,23 +257,13 @@ class DDPG(object):
                 s, 30, activation=tf.nn.relu, name='l1', trainable=trainable)
             a = tf.compat.v1.layers.dense(
                 net, self.a_dim, activation=tf.nn.tanh, name='a', trainable=trainable)
-            # print(a)
-            #print(tf.multiply(a, self.a_bound, name='scaled_a'),"QQQ")
-            # """
+            '''
             scaled_a = tf.multiply(a, self.a_bound, name='scaled_a')
-            # print(a.weight)
-            # a_clip = tf_clipping_acti_func(scaled_a)
-
-            # a_clip_layer = tf.compat.v1.layers.dense(
-            #     a_clip, self.a_dim, activation=tf_clipping_acti_func, name='a_clip', trainable=False ### nontrainable and give value
-            # )
-            """
-            lower_bound = np.zeros(self.a_dim)
-            upper_bound = self.a_bound
-            a_clip = tf.clip_by_value(a, clip_value_min=lower_bound, clip_value_max=upper_bound)
-            a_clip_layer = tf.compat.v1.layers.dense(a_clip, self.a_dim, activation=tf.nn.relu, name='a_clip', trainable=trainable)
-            """
-            return scaled_a
+            print('scaled_a: ', scaled_a)
+            '''
+            # customized activation function (clipping)
+            a_clip = tf_clipping_acti_func(a)
+            return a_clip
 
     def _build_c(self, s, a, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
@@ -282,17 +274,8 @@ class DDPG(object):
                 'w1_a', [self.a_dim, n_l1], trainable=trainable)
             b1 = tf.compat.v1.get_variable(
                 'b1', [1, n_l1], trainable=trainable)
-            ss = tf.matmul(s, w1_s)
-            aa = tf.matmul(a, w1_a)
-            # aa.set_shape(ss.get_shape())
-            print('ss.get_shape(): ', ss.get_shape())
-            print('ss: ', ss.shape)
-            print('aa: ', aa.shape)
-            ssaa = ss + aa
-            print('ssaa: ', ssaa.shape)
-            net = tf.nn.relu(tf.matmul(s, w1_s) + tf.matmul(a, w1_a) + b1)
-            c = tf.compat.v1.layers.dense(net, 1, trainable=trainable)
-            print(c)
+            net = tf.nn.relu(tf.matmul(s, w1_s) +
+                             tf.reshape(tf.matmul([a], w1_a), [-1, 30]) + b1)  # (1, None, 30) -> (None, 30)
             # Q(s,a)
             return tf.compat.v1.layers.dense(net, 1, trainable=trainable)
 
@@ -301,8 +284,6 @@ class DDPG(object):
 
 def OptLayer_function(action, a_dim, a_bound, env):
     # adjust to y
-    print("\n=== OptLayer: =====")
-    print("action: ", action)
     # exit(0)
     maxa = action[int(np.argmax(action))]
     mina = action[int(np.argmin(action))]
@@ -403,12 +384,13 @@ a_dim = env.action_space.shape[0]  # 4
 # print(a_dim,"YEEEEEEE")
 # print(env.action_space.low,"low")
 a_bound = env.action_space.high  # bound , in txt file
+opt_grad = np.zeros((a_dim, a_dim), dtype=np.float32)
 
 ddpg = DDPG(a_dim, s_dim, a_bound)
 
 var = 3  # control exploration
 
-for ep in range(100000):
+for ep in range(10):  # 100000
     R = 0
     ld_pickup = 0
     ld_dropoff = 0
@@ -421,16 +403,18 @@ for ep in range(100000):
     while not done:
         #action = None
         action = ddpg.choose_action(s)
-        print("In DDPG main, x =", action)
-        action, grad = OptLayer_function(action, a_dim, a_bound, env)
+        # print("In DDPG main, x =", action)
+        action, opt_grad = OptLayer_function(action, a_dim, a_bound, env)
+        # print("opt_grad: ", opt_grad)
+        # exit(0)
         # print(action,"After_modify")
         # print(obs)
         #action = get_supriyo_policy_action(env, obs, policy)
 
         #action = None
         s_, r, done, info = env.step(action)
-        print(done)
-        print(ddpg.pointer)
+        # print(done)
+        # print(ddpg.pointer)
         ddpg.store_transition(s, action, r / 10, s_)
         if ddpg.pointer > MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
