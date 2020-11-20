@@ -6,6 +6,7 @@ import math
 import gym
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
 import gym_BSS  # noqa: F401
 
 name = sys.argv[1] if len(sys.argv) > 1 else 'BSSEnvTest-v0'
@@ -62,25 +63,23 @@ def read_supriyo_policy_results(env):
     f1.close()
     return (ypcmu, yncmu)
 
+
 ###############################  DDPG  ####################################
+""" Writing activation function """
 
 
-def clipping_acti_func(action_mtx):
+def clipping(action_mtx):
     # print("\n--- In clipping activation function ---")
     # print("a_bound: ", a_bound)
     # print("action mtx: ", action_mtx)
     # print("x: ", action_mtx[0])
     action = action_mtx[0] * a_bound  # [[xx, xx, xx, xx]], and scaled_a here
     # print("scaled x: ", action)
-    # check if all elements are in the bound
     # adjust to y
     maxa = action[int(np.argmax(action))]
     mina = action[int(np.argmin(action))]
     lower = np.zeros(a_dim)
     y = np.zeros(a_dim)
-    if np.all(action <= a_bound) and np.all(action >= lower):
-        # print("no need to clip!!!")
-        return action
 
     # Avoid [nan nan nan nan]
     # '''
@@ -95,16 +94,71 @@ def clipping_acti_func(action_mtx):
     # print(env.nbikes, "bike_num")
     # print(a_bound, "abound")
     for i in range(a_dim):
-        y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
+        # if x[k] is in the bound, then no need to clip
+        if action[i] <= a_bound[i] and action[i] >= lower[i]:
+            y[i] = action[i]
+        else:
+            y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
     # print("y: ", y)
     # print("------------------\n")
     return y
 
 
-np_clipping_acti_func = np.vectorize(
-    clipping_acti_func)  # vectorize the python function
-# def np_clipping_acti_func(x):
-#     return (clipping_acti_func(x))
+# np_clipping = np.vectorize(clipping)  # vectorize the python function # <-- no need
+
+
+""" Gradient of Activation """
+
+
+def d_clipping(action_mtx):
+    # print("(d) action mtx: ", action_mtx)
+    x = action_mtx[0] * a_bound  # [[xx, xx, xx, xx]], and scaled_a here
+    # print("scaled x: ", action)
+    lower = np.zeros(a_dim)
+
+    # Avoid [nan nan nan nan]
+    # '''
+    is_nan = []
+    for a in action:
+        is_nan.append(math.isnan(a))
+    # print("is nan: ", is_nan)
+    if np.all(is_nan):
+        # exit(0)
+        x = np.array(a_bound)
+    # '''
+
+    # compute gradient
+    max_i = np.argmax(x)
+    min_i = np.argmin(x)
+    # print("max_i: ", max_i)
+    # print("min_i: ", min_i)
+
+    grad = np.zeros((a_dim, a_dim))
+    for i in range(a_dim):
+        if (i == max_i or i == min_i):
+            continue
+        # y[k] = upper[k] + (upper[k]-lower[k]) * {(x[i]-min(x))/(max(x)-min(x))}
+        grad[i][i] = (a_bound[i]-lower[i]) / (x[max_i] - x[min_i])
+    return grad
+
+# np_d_clipping = np.vectorize(d_clipping) # don't need this one!
+
+
+def np_d_clipping_32(x):
+    return d_clipping(x).astype(np.float32)
+
+
+def tf_d_clipping(x, name=None):
+    with tf.compat.v1.name_scope(name, "d_clipping", [x]) as name:
+        y = py_func(np_d_clipping_32,  # forward pass function
+                    [x],
+                    [tf.float32],
+                    name=name,
+                    stateful=False)
+
+        # when using with the code, it is used to specify the rank of the input.
+        y[0].set_shape(x.get_shape())
+        return y[0]
 
 
 def py_func(func, inp, Tout, stateful=True, name=None, grad=None):
@@ -116,19 +170,25 @@ def py_func(func, inp, Tout, stateful=True, name=None, grad=None):
         return tf.compat.v1.py_func(func, inp, Tout, stateful=stateful, name=name)
 
 
+""" Gradient Function """
+
+
 def clipping_grad(op, grad):
     x = op.inputs[0]
-    n_gr = tf_clipping_acti_func(x)  # defining the gradient
+    n_gr = tf_d_clipping(x)  # defining the gradient
     return grad * n_gr
 
 
-def np_clipping_acti_func_32(x):
-    return clipping_acti_func(x).astype(np.float32)
+""" Combining it all together """
 
 
-def tf_clipping_acti_func(x, name=None):
-    with tf.compat.v1.name_scope(name, "clipping_acti_func", [x]) as name:
-        y = py_func(np_clipping_acti_func_32,  # forward pass function
+def np_clipping_32(x):
+    return clipping(x).astype(np.float32)
+
+
+def tf_clipping(x, name=None):
+    with tf.compat.v1.name_scope(name, "clipping", [x]) as name:
+        y = py_func(np_clipping_32,  # forward pass function
                     [x],
                     [tf.float32],
                     name=name,
@@ -189,6 +249,10 @@ class DDPG(object):
         # self.grads_and_vars = [((grad @ opt_grad), var)
         #                        for grad, var in self.grads_and_vars_noOpt]
         # for grad, var in self.grads_and_vars:
+        print("grad_and_var: ", self.grads_and_vars)
+        print("grad[2][0]: ", self.grads_and_vars[2][0])
+        print("opt_grad: ", opt_grad)
+        exit(0)
         self.grads_and_vars[2] = (
             self.grads_and_vars[2][0] @ opt_grad, self.grads_and_vars[2][1])
 
@@ -220,29 +284,31 @@ class DDPG(object):
         br = bt[:, -self.s_dim - 1: -self.s_dim]
         bs_ = bt[:, -self.s_dim:]
 
-        # '''
         a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
-        # one more layer 9,2>>11,2  but add (a_loss,self.ae_params) become 4,2
-        # print("=== g ===")
-        # print(np.array(g).shape)
-        # print("=========")
-        # print(g[0][0].shape)
-        # print(g[0][1].shape)
-        # print("Q")
-        # print(g[1][0].shape)
-        # print("Q")
-        # print(g[1][1].shape)
-        # print("QQ")
-        # print(g[2][0].shape)
-        # print(g[2][1].shape)
-        # print(g[3][0].shape)
-        # print(g[3][1].shape)
+        # a, g = self.sess.run(self.atrain, {self.S: bs})
+        '''
+        # one more layer 9, 2 >> 11, 2  but add(a_loss, self.ae_params) become 4, 2
+        print("=== g ===")
+        print(np.array(g).shape)
+        print("=========")
+        print(g[0][0].shape)
+        print(g[0][1].shape)
+        print("Q")
+        print(g[1][0].shape)
+        print("Q")
+        print(g[1][1].shape)
+        print("QQ")
+        print(g[2][0].shape)
+        print(g[2][1].shape)
+        print(g[3][0].shape)
+        print(g[3][1].shape)
         # print(g.gg)  # to terminal
-        # '''
+        '''
         # self.sess.run(self.atrain, {self.S: bs})
 
         self.sess.run(self.ctrain, {self.S: bs,
                                     self.a: ba, self.R: br, self.S_: bs_})
+        # print(g.gg)
 
     def store_transition(self, s, a, r, s_):
         transition = np.hstack((s, a, [r], s_))
@@ -253,16 +319,16 @@ class DDPG(object):
 
     def _build_a(self, s, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
-            net = tf.compat.v1.layers.dense(
+            net_1 = tf.compat.v1.layers.dense(
                 s, 30, activation=tf.nn.relu, name='l1', trainable=trainable)
             a = tf.compat.v1.layers.dense(
-                net, self.a_dim, activation=tf.nn.tanh, name='a', trainable=trainable)
+                net_1, self.a_dim, activation=tf.nn.tanh, name='a', trainable=trainable)
             '''
             scaled_a = tf.multiply(a, self.a_bound, name='scaled_a')
             print('scaled_a: ', scaled_a)
             '''
             # customized activation function (clipping)
-            a_clip = tf_clipping_acti_func(a)
+            a_clip = tf_clipping(a)
             return a_clip
 
     def _build_c(self, s, a, scope, trainable):
@@ -274,10 +340,13 @@ class DDPG(object):
                 'w1_a', [self.a_dim, n_l1], trainable=trainable)
             b1 = tf.compat.v1.get_variable(
                 'b1', [1, n_l1], trainable=trainable)
-            net = tf.nn.relu(tf.matmul(s, w1_s) +
-                             tf.reshape(tf.matmul([a], w1_a), [-1, 30]) + b1)  # (1, None, 30) -> (None, 30)
+            net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
+                                   tf.reshape(tf.matmul([a], w1_a), [-1, 30]) + b1)  # (1, None, 30) -> (None, 30)
+            net_1 = tf.compat.v1.layers.dense(
+                net_1_act, 1, trainable=trainable)
+
             # Q(s,a)
-            return tf.compat.v1.layers.dense(net, 1, trainable=trainable)
+            return net_1
 
 ################ Opt layer#####################
 
@@ -390,7 +459,8 @@ ddpg = DDPG(a_dim, s_dim, a_bound)
 
 var = 3  # control exploration
 
-for ep in range(10):  # 100000
+episode_num = 10
+for ep in range(episode_num):  # 100000
     R = 0
     ld_pickup = 0
     ld_dropoff = 0
@@ -418,6 +488,7 @@ for ep in range(10):  # 100000
         ddpg.store_transition(s, action, r / 10, s_)
         if ddpg.pointer > MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
+            # print("AAAAA")
             ddpg.learn()
         s = s_
         R += r
@@ -440,3 +511,13 @@ for ep in range(10):  # 100000
 print('')
 print('---------------------------')
 print('Average reward per episode:', np.average(Rs))
+
+xAxis = np.arange(episode_num)
+yAxis = Rs
+
+plt.plot(xAxis, yAxis)
+plt.title('Memory: {}, Batch size: {}, Episode: {}'.format(
+    MEMORY_CAPACITY, BATCH_SIZE, episode_num))
+plt.xlabel('Episode')
+plt.ylabel('Reward')
+plt.show()

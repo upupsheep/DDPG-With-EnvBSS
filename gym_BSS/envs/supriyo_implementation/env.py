@@ -91,14 +91,15 @@ class BSSEnv(gym.Env):
         self.seed(None)
 
     def __read_data(self):
-        # self.__read_capacity_and_starting_allocation(
-        #     os.path.join(self.data_dir, "demand_bound_artificial_60.txt"))
-        # self.__read_zone_distances(
-        #     os.path.join(self.data_dir, "RawData", "distance_zone.txt"))
-        # self.__read_demand_data(
-        #     self.scenarios,
-        #     os.path.join(self.data_dir, "DemandScenarios", self.data_set_name,
-        #                  "DemandScenarios1", "demand_scenario_{scenario}.txt"))
+        self.__read_capacity_and_starting_allocation(
+            os.path.join(self.data_dir, "demand_bound_artificial_60.txt"))
+        self.__read_zone_distances(
+            os.path.join(self.data_dir, "RawData", "distance_zone.txt"))
+        self.__read_demand_data(
+            self.scenarios,
+            os.path.join(self.data_dir, "DemandScenarios", self.data_set_name,
+                         "DemandScenarios1", "demand_scenario_{scenario}.txt"))
+        """
         self.__read_capacity_and_starting_allocation(
             os.path.join(
                 os.path.dirname(__file__), "../../../demand_bound.txt"))
@@ -110,6 +111,7 @@ class BSSEnv(gym.Env):
             os.path.join(
                 os.path.dirname(__file__),
                 "../../../demand_scenario/demand_scenario_{scenario}.txt"))
+        """
 
     def __read_capacity_and_starting_allocation(self, filename):
         f = open(filename)
@@ -328,7 +330,7 @@ class BSSEnv(gym.Env):
                     # print("readjusting for zone", s)
                     for s1 in self.__mindis[s]:
                         if ((self.__ds[iteration + 1][s] - self.__cp[s]) <=
-                            (self.__cp[s1] - self.__ds[iteration + 1][s1])):
+                                (self.__cp[s1] - self.__ds[iteration + 1][s1])):
                             self.__ds[iteration + 1][
                                 s1] = self.__ds[iteration +
                                                 1][s1] - self.__cp[s] + self.__ds[iteration
