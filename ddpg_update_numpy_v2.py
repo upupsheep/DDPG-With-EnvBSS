@@ -26,6 +26,7 @@ GAMMA = 0.9
 TAU = 0.001
 MEMORY_CAPACITY = 1000000  # 10000
 BATCH_SIZE = 64  # 32
+LAMBDA = 10000
 #####################  BSS data functions  ####################
 
 
@@ -335,6 +336,7 @@ class DDPG(object):
 
     def _build_c(self, s, a, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
+            # Q(s, a)
             n_l1 = 400
             w1_s = tf.compat.v1.get_variable(
                 'w1_s', [self.s_dim, n_l1], trainable=trainable)
@@ -342,14 +344,21 @@ class DDPG(object):
                 'w1_a', [self.a_dim, n_l1], trainable=trainable)
             b1 = tf.compat.v1.get_variable(
                 'b1', [1, n_l1], trainable=trainable)
+
+            # penalty term
+            mu = tf.abs(1 - tf.reduce_sum(a)) + \
+                tf.abs(env.nbikes - tf.reduce_sum(a))
+
             net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
-                                   tf.reshape(tf.matmul([a], w1_a), [-1, 400]) + b1)  # (1, None, 30) -> (None, 30)
+                                   tf.reshape(
+                                       tf.matmul([a], w1_a), [-1, 400]) + b1
+                                   + tf.multiply(float(LAMBDA), mu))  # (1, None, 30) -> (None, 30)
+            # Q(s,a)
             net_1 = tf.compat.v1.layers.dense(
                 net_1_act, 300, trainable=trainable)
 
             net_2 = tf.compat.v1.layers.dense(
                 net_1, 1, activation=tf.nn.relu, trainable=trainable)
-            # Q(s,a)
             return net_2
 
 ################ Opt layer#####################
