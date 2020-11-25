@@ -24,8 +24,9 @@ LR_A = 0.0001
 LR_C = 0.001
 GAMMA = 0.9
 TAU = 0.001
-MEMORY_CAPACITY = 1000000  # 10000
-BATCH_SIZE = 64  # 32
+MEMORY_CAPACITY = 100  # 1000000
+BATCH_SIZE = 128  # 128
+episode_num = 10000  # 10000
 LAMBDA = 10000
 #####################  BSS data functions  ####################
 
@@ -257,6 +258,8 @@ class DDPG(object):
         self.grads_and_vars[4] = (
             self.grads_and_vars[4][0] @ opt_grad, self.grads_and_vars[4][1])
 
+        # self.grads_and_vars.append((opt_grad, )
+
         # print("grad_and_vars: ", self.grads_and_vars)
        # self.optgrad=tf.zeros([a_dim, a_dim])
        # self.gv_opt_fn=[(gv[0]*self.optgrad,gv[1])for gv in self.grads_and_vars]
@@ -275,6 +278,7 @@ class DDPG(object):
         # return self.sess.run(self.a, {self.S: s[np.newaxis, :]})[0]
 
     def learn(self):
+        print("learn!!!")
         # soft target replacement
         self.sess.run(self.soft_replace)
 
@@ -287,7 +291,7 @@ class DDPG(object):
 
         a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
         # a, g = self.sess.run(self.atrain, {self.S: bs})
-        '''
+        # '''
         # one more layer 9, 2 >> 11, 2  but add(a_loss, self.ae_params) become 4, 2
         print("=== g ===")
         print(np.array(g).shape)
@@ -296,15 +300,18 @@ class DDPG(object):
         print(g[0][1].shape)
         print("Q")
         print(g[1][0].shape)
-        print("Q")
         print(g[1][1].shape)
         print("QQ")
         print(g[2][0].shape)
         print(g[2][1].shape)
+        print("QQQ")
         print(g[3][0].shape)
         print(g[3][1].shape)
-        # print(g.gg)  # to terminal
-        '''
+        print("QQQQ")
+        print(g[4][0].shape)
+        print(g[4][1].shape)
+        print(g.gg)  # to terminal
+        # '''
         # self.sess.run(self.atrain, {self.S: bs})
 
         self.sess.run(self.ctrain, {self.S: bs,
@@ -346,6 +353,7 @@ class DDPG(object):
                 'b1', [1, n_l1], trainable=trainable)
 
             # penalty term
+            print("reduce_sum: ", tf.abs(1 - tf.reduce_sum(a)))
             mu = tf.abs(1 - tf.reduce_sum(a)) + \
                 tf.abs(env.nbikes - tf.reduce_sum(a))
 
@@ -475,7 +483,6 @@ ddpg = DDPG(a_dim, s_dim, a_bound)
 
 var = 3  # control exploration
 
-episode_num = 10000
 for ep in range(episode_num):  # 100000
     R = 0
     ld_pickup = 0
@@ -500,7 +507,7 @@ for ep in range(episode_num):  # 100000
         #action = None
         s_, r, done, info = env.step(action)
         # print(done)
-        # print(ddpg.pointer)
+        # print("{}, {}".format(ddpg.pointer, done))
         ddpg.store_transition(s, action, r / 10, s_)
         if ddpg.pointer > MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
