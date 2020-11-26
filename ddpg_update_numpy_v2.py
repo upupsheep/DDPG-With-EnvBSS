@@ -26,7 +26,7 @@ GAMMA = 0.9
 TAU = 0.001
 MEMORY_CAPACITY = 100  # 1000000
 BATCH_SIZE = 128  # 128
-episode_num = 10000  # 10000
+episode_num = 1000  # 10000
 LAMBDA = 10000
 #####################  BSS data functions  ####################
 
@@ -238,6 +238,8 @@ class DDPG(object):
 
         q_target = self.R + GAMMA * q_
         # in the feed_dic for the td_error, the self.a should change to actions in memory
+        # mu = tf.abs(1 - tf.reduce_sum(self.a))
+
         td_error = tf.compat.v1.losses.mean_squared_error(
             labels=q_target, predictions=q)
         self.ctrain = tf.compat.v1.train.AdamOptimizer(
@@ -278,7 +280,7 @@ class DDPG(object):
         # return self.sess.run(self.a, {self.S: s[np.newaxis, :]})[0]
 
     def learn(self):
-        print("learn!!!")
+        # print("learn!!!")
         # soft target replacement
         self.sess.run(self.soft_replace)
 
@@ -291,7 +293,7 @@ class DDPG(object):
 
         a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
         # a, g = self.sess.run(self.atrain, {self.S: bs})
-        # '''
+        '''
         # one more layer 9, 2 >> 11, 2  but add(a_loss, self.ae_params) become 4, 2
         print("=== g ===")
         print(np.array(g).shape)
@@ -311,7 +313,7 @@ class DDPG(object):
         print(g[4][0].shape)
         print(g[4][1].shape)
         print(g.gg)  # to terminal
-        # '''
+        '''
         # self.sess.run(self.atrain, {self.S: bs})
 
         self.sess.run(self.ctrain, {self.S: bs,
@@ -353,14 +355,20 @@ class DDPG(object):
                 'b1', [1, n_l1], trainable=trainable)
 
             # penalty term
-            print("reduce_sum: ", tf.abs(1 - tf.reduce_sum(a)))
-            mu = tf.abs(1 - tf.reduce_sum(a)) + \
-                tf.abs(env.nbikes - tf.reduce_sum(a))
+            # print("reduce_sum: ", tf.abs(1 - tf.reduce_sum(a)))
+            # print("a: ", a)
+            # xx = tf.abs(1 - tf.reduce_sum(a, [0, 1]))
+            # xx = tf.reduce_sum(a)
+            # yy = tf.abs(env.nbikes - tf.reduce_sum(a))
+            # xxyy = xx + yy
+            # mu = tf.abs(1 - tf.reduce_sum(a)) + \
+            #     tf.abs(env.nbikes - tf.reduce_sum(a))
+            # mu_vector = tf.fill([self.s_dim, 1], mu)
 
             net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
                                    tf.reshape(
-                                       tf.matmul([a], w1_a), [-1, 400]) + b1
-                                   + tf.multiply(float(LAMBDA), mu))  # (1, None, 30) -> (None, 30)
+                                       tf.matmul([a], w1_a), [-1, 400]) + b1)  # (1, None, 30) -> (None, 30)
+            # + tf.multiply(float(LAMBDA), xxyy)
             # Q(s,a)
             net_1 = tf.compat.v1.layers.dense(
                 net_1_act, 300, trainable=trainable)
