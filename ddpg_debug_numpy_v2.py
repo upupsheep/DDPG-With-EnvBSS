@@ -340,6 +340,9 @@ class DDPG(object):
                 'w1_a', [self.a_dim, n_l1], trainable=trainable)
             b1 = tf.compat.v1.get_variable(
                 'b1', [1, n_l1], trainable=trainable)
+
+            print("a shape: ", tf.shape(a))
+            exit(0)
             net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
                                    tf.reshape(tf.matmul([a], w1_a), [-1, 30]) + b1)  # (1, None, 30) -> (None, 30)
             net_1 = tf.compat.v1.layers.dense(

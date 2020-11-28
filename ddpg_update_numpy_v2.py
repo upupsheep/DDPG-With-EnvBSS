@@ -25,10 +25,13 @@ LR_C = 0.001
 GAMMA = 0.9
 TAU = 0.001
 MEMORY_CAPACITY = 100  # 1000000
-BATCH_SIZE = 128  # 128
-episode_num = 1000  # 10000
+c = 1
+BATCH_SIZE = 64  # 128
+episode_num = 10000  # 10000
 LAMBDA = 10000
 #####################  BSS data functions  ####################
+# penalty term
+mu = 0.0
 
 
 def get_supriyo_policy_action(env, obs, policy):
@@ -53,7 +56,7 @@ def read_supriyo_policy_results(env):
     f1 = open(os.path.join(env.data_dir, "Our_policy",
                            "policy_result{0}.csv".format(scenario)))
     line = f1.readline()
-    #line = f1.readline()
+    # line = f1.readline()
     print(scenario)
     while(line != ""):
         line = line.strip(" \n")
@@ -103,6 +106,10 @@ def clipping(action_mtx):
             y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
     # print("y: ", y)
     # print("------------------\n")
+
+    mu = float(LAMBDA) * float(np.abs(1 - np.sum(y)) +
+                               np.abs(env.nbikes - np.sum(y)))
+
     return y
 
 
@@ -291,7 +298,7 @@ class DDPG(object):
         br = bt[:, -self.s_dim - 1: -self.s_dim]
         bs_ = bt[:, -self.s_dim:]
 
-        a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
+        # a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
         # a, g = self.sess.run(self.atrain, {self.S: bs})
         '''
         # one more layer 9, 2 >> 11, 2  but add(a_loss, self.ae_params) become 4, 2
@@ -314,7 +321,7 @@ class DDPG(object):
         print(g[4][1].shape)
         print(g.gg)  # to terminal
         '''
-        # self.sess.run(self.atrain, {self.S: bs})
+        self.sess.run(self.atrain, {self.S: bs})
 
         self.sess.run(self.ctrain, {self.S: bs,
                                     self.a: ba, self.R: br, self.S_: bs_})
@@ -355,19 +362,11 @@ class DDPG(object):
                 'b1', [1, n_l1], trainable=trainable)
 
             # penalty term
-            # print("reduce_sum: ", tf.abs(1 - tf.reduce_sum(a)))
-            # print("a: ", a)
-            # xx = tf.abs(1 - tf.reduce_sum(a, [0, 1]))
-            # xx = tf.reduce_sum(a)
-            # yy = tf.abs(env.nbikes - tf.reduce_sum(a))
-            # xxyy = xx + yy
-            # mu = tf.abs(1 - tf.reduce_sum(a)) + \
-            #     tf.abs(env.nbikes - tf.reduce_sum(a))
-            # mu_vector = tf.fill([self.s_dim, 1], mu)
+            penalty_term = tf.fill([1, n_l1], mu)
 
             net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
                                    tf.reshape(
-                                       tf.matmul([a], w1_a), [-1, 400]) + b1)  # (1, None, 30) -> (None, 30)
+                                       tf.matmul([a], w1_a), [-1, 400]) + b1 - penalty_term)  # (1, None, 30) -> (None, 30)
             # + tf.multiply(float(LAMBDA), xxyy)
             # Q(s,a)
             net_1 = tf.compat.v1.layers.dense(
@@ -445,7 +444,7 @@ def OptLayer_function(action, a_dim, a_bound, env):
                         grad_z[i][j] = 0
                     set_clamp_round.add(i)
        # print(z,"z_after clamp")
-       #print(grad_z,"grad after clamp")
+       # print(grad_z,"grad after clamp")
         # algorithm 21~25
         unclamp_num = unclamp_num-len(set_clamp_round)
      #   print(unclamp_num,"unclamp")
@@ -500,9 +499,9 @@ for ep in range(episode_num):  # 100000
     done = False
     s = env.reset()  # [0,0,0,0,8,7,8,8,0]
     # print(s)
-    #policy = read_supriyo_policy_results(env)
+    # policy = read_supriyo_policy_results(env)
     while not done:
-        #action = None
+        # action = None
         action = ddpg.choose_action(s)
         # print("In DDPG main, x =", action)
         action, opt_grad = OptLayer_function(action, a_dim, a_bound, env)
@@ -510,14 +509,14 @@ for ep in range(episode_num):  # 100000
         # exit(0)
         # print(action,"After_modify")
         # print(obs)
-        #action = get_supriyo_policy_action(env, obs, policy)
+        # action = get_supriyo_policy_action(env, obs, policy)
 
-        #action = None
+        # action = None
         s_, r, done, info = env.step(action)
         # print(done)
         # print("{}, {}".format(ddpg.pointer, done))
         ddpg.store_transition(s, action, r / 10, s_)
-        if ddpg.pointer > MEMORY_CAPACITY:
+        if ddpg.pointer > c*MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
             # print("AAAAA")
             ddpg.learn()
