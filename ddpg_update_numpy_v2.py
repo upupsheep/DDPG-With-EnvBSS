@@ -24,8 +24,8 @@ LR_A = 0.0001
 LR_C = 0.001
 GAMMA = 0.9
 TAU = 0.001
-MEMORY_CAPACITY = 100  # 1000000
-c = 1
+MEMORY_CAPACITY = 10000  # 1000000
+c = 0.1
 BATCH_SIZE = 64  # 128
 episode_num = 10000  # 10000
 LAMBDA = 10000
@@ -264,10 +264,28 @@ class DDPG(object):
         # print("grad[2][0]: ", self.grads_and_vars[2][0])
         # print("opt_grad: ", opt_grad)
         # exit(0)
+        # print("g and v [4]: ", self.grads_and_vars[4])
+        # print("g and v [5]: ", self.grads_and_vars[5])
+        # exit(0)
+
         self.grads_and_vars[4] = (
             self.grads_and_vars[4][0] @ opt_grad, self.grads_and_vars[4][1])
 
-        # self.grads_and_vars.append((opt_grad, )
+        '''
+        opt_weight = np.ones((self.a_dim, self.a_dim))
+        opt_bias_grad = np.zeros((self.a_dim, self.a_dim))
+        opt_bias_weight = np.zeros((self.a_dim, self.a_dim))
+
+        tf_opt_grad = tf.convert_to_tensor(opt_grad, dtype=tf.float32)
+        tf_opt_weight = tf.convert_to_tensor(opt_weight, dtype=tf.float32)
+        tf_opt_bias_grad = tf.convert_to_tensor(
+            opt_bias_grad, dtype=tf.float32)
+        tf_opt_bias_weight = tf.convert_to_tensor(
+            opt_bias_weight, dtype=tf.float32)
+
+        self.grads_and_vars.append((tf_opt_grad, tf_opt_weight))
+        self.grads_and_vars.append((tf_opt_bias_grad, tf_opt_bias_weight))
+        '''
 
         # print("grad_and_vars: ", self.grads_and_vars)
        # self.optgrad=tf.zeros([a_dim, a_dim])

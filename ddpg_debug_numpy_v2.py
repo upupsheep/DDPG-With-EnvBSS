@@ -20,13 +20,18 @@ print(env.metadata)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 #####################  hyper parameters  ####################
-LR_A = 0.001
-LR_C = 0.002
+LR_A = 0.0001
+LR_C = 0.001
 GAMMA = 0.9
-TAU = 0.01
-MEMORY_CAPACITY = 4  # 10000
-BATCH_SIZE = 2  # 32
+TAU = 0.001
+MEMORY_CAPACITY = 100  # 1000000
+c = 1
+BATCH_SIZE = 64  # 128
+episode_num = 10000  # 10000
+LAMBDA = 10000
 #####################  BSS data functions  ####################
+# penalty term
+mu = 0.0
 
 
 def get_supriyo_policy_action(env, obs, policy):
@@ -51,7 +56,7 @@ def read_supriyo_policy_results(env):
     f1 = open(os.path.join(env.data_dir, "Our_policy",
                            "policy_result{0}.csv".format(scenario)))
     line = f1.readline()
-    #line = f1.readline()
+    # line = f1.readline()
     print(scenario)
     while(line != ""):
         line = line.strip(" \n")
@@ -101,6 +106,10 @@ def clipping(action_mtx):
             y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
     # print("y: ", y)
     # print("------------------\n")
+
+    mu = float(LAMBDA) * float(np.abs(1 - np.sum(y)) +
+                               np.abs(env.nbikes - np.sum(y)))
+
     return y
 
 
@@ -236,6 +245,8 @@ class DDPG(object):
 
         q_target = self.R + GAMMA * q_
         # in the feed_dic for the td_error, the self.a should change to actions in memory
+        # mu = tf.abs(1 - tf.reduce_sum(self.a))
+
         td_error = tf.compat.v1.losses.mean_squared_error(
             labels=q_target, predictions=q)
         self.ctrain = tf.compat.v1.train.AdamOptimizer(
@@ -249,12 +260,32 @@ class DDPG(object):
         # self.grads_and_vars = [((grad @ opt_grad), var)
         #                        for grad, var in self.grads_and_vars_noOpt]
         # for grad, var in self.grads_and_vars:
-        print("grad_and_var: ", self.grads_and_vars)
-        print("grad[2][0]: ", self.grads_and_vars[2][0])
-        print("opt_grad: ", opt_grad)
-        exit(0)
-        self.grads_and_vars[2] = (
-            self.grads_and_vars[2][0] @ opt_grad, self.grads_and_vars[2][1])
+        # print("grad_and_var: ", self.grads_and_vars)
+        # print("grad[2][0]: ", self.grads_and_vars[2][0])
+        # print("opt_grad: ", opt_grad)
+        # exit(0)
+        # print("g and v [4]: ", self.grads_and_vars[4])
+        # print("g and v [5]: ", self.grads_and_vars[5])
+        # exit(0)
+
+        self.grads_and_vars[4] = (
+            self.grads_and_vars[4][0] @ opt_grad, self.grads_and_vars[4][1])
+
+        '''
+        opt_weight = np.ones((self.a_dim, self.a_dim))
+        opt_bias_grad = np.zeros((self.a_dim, self.a_dim))
+        opt_bias_weight = np.zeros((self.a_dim, self.a_dim))
+
+        tf_opt_grad = tf.convert_to_tensor(opt_grad, dtype=tf.float32)
+        tf_opt_weight = tf.convert_to_tensor(opt_weight, dtype=tf.float32)
+        tf_opt_bias_grad = tf.convert_to_tensor(
+            opt_bias_grad, dtype=tf.float32)
+        tf_opt_bias_weight = tf.convert_to_tensor(
+            opt_bias_weight, dtype=tf.float32)
+
+        self.grads_and_vars.append((tf_opt_grad, tf_opt_weight))
+        self.grads_and_vars.append((tf_opt_bias_grad, tf_opt_bias_weight))
+        '''
 
         # print("grad_and_vars: ", self.grads_and_vars)
        # self.optgrad=tf.zeros([a_dim, a_dim])
@@ -274,6 +305,7 @@ class DDPG(object):
         # return self.sess.run(self.a, {self.S: s[np.newaxis, :]})[0]
 
     def learn(self):
+        # print("learn!!!")
         # soft target replacement
         self.sess.run(self.soft_replace)
 
@@ -284,7 +316,7 @@ class DDPG(object):
         br = bt[:, -self.s_dim - 1: -self.s_dim]
         bs_ = bt[:, -self.s_dim:]
 
-        a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
+        # a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
         # a, g = self.sess.run(self.atrain, {self.S: bs})
         '''
         # one more layer 9, 2 >> 11, 2  but add(a_loss, self.ae_params) become 4, 2
@@ -295,16 +327,19 @@ class DDPG(object):
         print(g[0][1].shape)
         print("Q")
         print(g[1][0].shape)
-        print("Q")
         print(g[1][1].shape)
         print("QQ")
         print(g[2][0].shape)
         print(g[2][1].shape)
+        print("QQQ")
         print(g[3][0].shape)
         print(g[3][1].shape)
-        # print(g.gg)  # to terminal
+        print("QQQQ")
+        print(g[4][0].shape)
+        print(g[4][1].shape)
+        print(g.gg)  # to terminal
         '''
-        # self.sess.run(self.atrain, {self.S: bs})
+        self.sess.run(self.atrain, {self.S: bs})
 
         self.sess.run(self.ctrain, {self.S: bs,
                                     self.a: ba, self.R: br, self.S_: bs_})
@@ -320,9 +355,11 @@ class DDPG(object):
     def _build_a(self, s, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
             net_1 = tf.compat.v1.layers.dense(
-                s, 30, activation=tf.nn.relu, name='l1', trainable=trainable)
+                s, 400, activation=tf.nn.relu, name='l1', trainable=trainable)
+            net_2 = tf.compat.v1.layers.dense(
+                net_1, 300, activation=tf.nn.relu, name='l2', trainable=trainable)
             a = tf.compat.v1.layers.dense(
-                net_1, self.a_dim, activation=tf.nn.tanh, name='a', trainable=trainable)
+                net_2, self.a_dim, activation=tf.nn.tanh, name='a', trainable=trainable)
             '''
             scaled_a = tf.multiply(a, self.a_bound, name='scaled_a')
             print('scaled_a: ', scaled_a)
@@ -333,7 +370,8 @@ class DDPG(object):
 
     def _build_c(self, s, a, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
-            n_l1 = 30
+            # Q(s, a)
+            n_l1 = 400
             w1_s = tf.compat.v1.get_variable(
                 'w1_s', [self.s_dim, n_l1], trainable=trainable)
             w1_a = tf.compat.v1.get_variable(
@@ -341,15 +379,20 @@ class DDPG(object):
             b1 = tf.compat.v1.get_variable(
                 'b1', [1, n_l1], trainable=trainable)
 
-            print("a shape: ", tf.shape(a))
-            exit(0)
-            net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
-                                   tf.reshape(tf.matmul([a], w1_a), [-1, 30]) + b1)  # (1, None, 30) -> (None, 30)
-            net_1 = tf.compat.v1.layers.dense(
-                net_1_act, 1, trainable=trainable)
+            # penalty term
+            penalty_term = tf.fill([1, n_l1], mu)
 
+            net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
+                                   tf.reshape(
+                                       tf.matmul([a], w1_a), [-1, 400]) + b1 - penalty_term)  # (1, None, 30) -> (None, 30)
+            # + tf.multiply(float(LAMBDA), xxyy)
             # Q(s,a)
-            return net_1
+            net_1 = tf.compat.v1.layers.dense(
+                net_1_act, 300, trainable=trainable)
+
+            net_2 = tf.compat.v1.layers.dense(
+                net_1, 1, activation=tf.nn.relu, trainable=trainable)
+            return net_2
 
 ################ Opt layer#####################
 
@@ -419,7 +462,7 @@ def OptLayer_function(action, a_dim, a_bound, env):
                         grad_z[i][j] = 0
                     set_clamp_round.add(i)
        # print(z,"z_after clamp")
-       #print(grad_z,"grad after clamp")
+       # print(grad_z,"grad after clamp")
         # algorithm 21~25
         unclamp_num = unclamp_num-len(set_clamp_round)
      #   print(unclamp_num,"unclamp")
@@ -448,6 +491,9 @@ def OptLayer_function(action, a_dim, a_bound, env):
 
 ###############################  training  ####################################
 Rs = []
+ewma_reward = 0  # EWMA reward for tracking the learning progress
+ewma_reward_s = []
+
 # 2*ZONE+1 ZONE's Demand,zone's number of resource on zone K (dS_) +time
 s_dim = env.observation_space.shape[0]
 # equal to get_observe function in env
@@ -462,7 +508,6 @@ ddpg = DDPG(a_dim, s_dim, a_bound)
 
 var = 3  # control exploration
 
-episode_num = 10
 for ep in range(episode_num):  # 100000
     R = 0
     ld_pickup = 0
@@ -472,9 +517,9 @@ for ep in range(episode_num):  # 100000
     done = False
     s = env.reset()  # [0,0,0,0,8,7,8,8,0]
     # print(s)
-    #policy = read_supriyo_policy_results(env)
+    # policy = read_supriyo_policy_results(env)
     while not done:
-        #action = None
+        # action = None
         action = ddpg.choose_action(s)
         # print("In DDPG main, x =", action)
         action, opt_grad = OptLayer_function(action, a_dim, a_bound, env)
@@ -482,14 +527,14 @@ for ep in range(episode_num):  # 100000
         # exit(0)
         # print(action,"After_modify")
         # print(obs)
-        #action = get_supriyo_policy_action(env, obs, policy)
+        # action = get_supriyo_policy_action(env, obs, policy)
 
-        #action = None
+        # action = None
         s_, r, done, info = env.step(action)
         # print(done)
-        # print(ddpg.pointer)
+        # print("{}, {}".format(ddpg.pointer, done))
         ddpg.store_transition(s, action, r / 10, s_)
-        if ddpg.pointer > MEMORY_CAPACITY:
+        if ddpg.pointer > c*MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
             # print("AAAAA")
             ddpg.learn()
@@ -500,9 +545,13 @@ for ep in range(episode_num):  # 100000
         revenue += info["revenue"]
         scenario = info["scenario"]
 
+    # update EWMA reward and log the results
+    ewma_reward = 0.05 * R + (1 - 0.05) * ewma_reward
+
     print({
         'episode': ep,
-        'reward': R,
+        'ewma reward': ewma_reward,
+        # 'ep reward': R,
         'Explore': var,
         'lost_demand_pickup': ld_pickup,
         "lost_demand_dropoff": ld_dropoff,
@@ -510,17 +559,27 @@ for ep in range(episode_num):  # 100000
         "scenario": scenario
     })
     Rs.append(R)
+    ewma_reward_s.append(ewma_reward)
+
+Rs = np.array(Rs)
+ewma_reward_s = np.array(ewma_reward_s)
 
 print('')
 print('---------------------------')
 print('Average reward per episode:', np.average(Rs))
 
+"""
+Save rewards to file
+"""
+np.save('ewma_reward', ewma_reward_s)
+np.save('ep_reward', Rs)
+
 xAxis = np.arange(episode_num)
-yAxis = Rs
+yAxis = ewma_reward_s
 
 plt.plot(xAxis, yAxis)
 plt.title('Memory: {}, Batch size: {}, Episode: {}'.format(
     MEMORY_CAPACITY, BATCH_SIZE, episode_num))
 plt.xlabel('Episode')
-plt.ylabel('Reward')
+plt.ylabel('EWMA Reward')
 plt.show()
