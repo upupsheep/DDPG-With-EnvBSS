@@ -307,6 +307,14 @@ class DDPG(object):
     def learn(self):
         # print("learn!!!")
         # soft target replacement
+        # variable_names = [v.name for v in tf.compat.v1.trainable_variables()]
+        # values = self.sess.run(variable_names)
+        # for k, v in zip(variable_names, values):
+        #     print("variable: ", k)
+        #     # print("shape: ", v.shape)
+        #     # print(v)
+        # exit(0)
+
         self.sess.run(self.soft_replace)
 
         indices = np.random.choice(MEMORY_CAPACITY, size=BATCH_SIZE)
@@ -380,7 +388,11 @@ class DDPG(object):
                 'b1', [1, n_l1], trainable=trainable)
 
             # penalty term
-            penalty_term = tf.fill([1, n_l1], mu)
+            mu_vector = tf.fill([1, n_l1], mu)
+            penalty_term = tf.compat.v1.get_variable(
+                name='penalty_term', initializer=mu_vector, trainable=trainable)
+            # print("penalty_term: ", penalty_term.trainable)
+            # exit(0)
 
             net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
                                    tf.reshape(
