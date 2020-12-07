@@ -5,27 +5,30 @@ import math
 tf.compat.v1.disable_eager_execution()
 
 
-x = tf.Variable([[50.]], dtype='float32', name='x', trainable=True)
-w = tf.Variable([[10.]], dtype='float32', name='w', trainable=True)
-y = w @ x
-z = y @ y
-
 # x = tf.Variable(initial_value=50., dtype='float32', trainable=True)
 # w = tf.Variable(initial_value=10., dtype='float32', trainable=True)
 # y = w * x
 # z = y * y
 
+x = tf.Variable([[50.]], dtype='float32', name='x', trainable=True)
+w = tf.Variable([[10.]], dtype='float32', name='w', trainable=True)
+# v = tf.Variable([[40.]], dtype='float32', name='v', trainable=True)
+
+# y = w @ x
+# z = 2 * y
+
 print("x: ", x.get_shape())
 print("w: ", w.get_shape())
 
-init = tf.constant_initializer(np.ones((1, 1)))
+w_init = tf.constant_initializer(np.ones((1, 1)))
+# w_init = tf.constant_initializer(np.array([[3.]]))
+b_init = tf.constant_initializer(np.array([[2.]]))
 
 # '''
 net_1 = tf.compat.v1.layers.dense(
-    y, 1, activation=None, name='l1', use_bias=False, kernel_initializer=init, trainable=True)
+    w @ x, 1, activation=None, name='l1', use_bias=False, kernel_initializer=w_init, trainable=True)
 net_2 = tf.compat.v1.layers.dense(
-    2*net_1, 1, activation=None, name='l2', use_bias=False, kernel_initializer=init, trainable=True)
-# print("net_2: ", net_2)
+    2*net_1, 1, activation=None, name='l2', use_bias=False, kernel_initializer=w_init, trainable=True)
 # '''
 
 
@@ -41,4 +44,3 @@ with tf.compat.v1.Session() as sess:
     print(g)
     g = np.array(g)
     print(g.shape)
-    print(g)

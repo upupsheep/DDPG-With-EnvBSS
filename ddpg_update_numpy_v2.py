@@ -24,11 +24,12 @@ LR_A = 0.0001
 LR_C = 0.001
 GAMMA = 0.9
 TAU = 0.001
-MEMORY_CAPACITY = 10000  # 1000000
-c = 0.1
+MEMORY_CAPACITY = 10000  # 10000
+c = 0.1  # 0.1
 BATCH_SIZE = 64  # 128
 episode_num = 10000  # 10000
 LAMBDA = 10000
+EPSILON = 0.1
 #####################  BSS data functions  ####################
 # penalty term
 mu = 0.0
@@ -77,9 +78,14 @@ def clipping(action_mtx):
     # print("\n--- In clipping activation function ---")
     # print("a_bound: ", a_bound)
     # print("action mtx: ", action_mtx)
-    # print("x: ", action_mtx[0])
-    action = action_mtx[0] * a_bound  # [[xx, xx, xx, xx]], and scaled_a here
+    # print("x: ", type(action_mtx))
+    # if type(action_mtx) is tuple:
+    #     # [[xx, xx, xx, xx]], and scaled_a here
+    #     action = action_mtx[0] * a_bound
+    # else:
+    #     action = action_mtx * a_bound
     # print("scaled x: ", action)
+    action = action_mtx[0] * a_bound
     # adjust to y
     maxa = action[int(np.argmax(action))]
     mina = action[int(np.argmin(action))]
@@ -400,10 +406,10 @@ class DDPG(object):
             # + tf.multiply(float(LAMBDA), xxyy)
             # Q(s,a)
             net_1 = tf.compat.v1.layers.dense(
-                net_1_act, 300, trainable=trainable)
+                net_1_act, 300, name='l1_c', trainable=trainable)
 
             net_2 = tf.compat.v1.layers.dense(
-                net_1, 1, activation=tf.nn.relu, trainable=trainable)
+                net_1, 1, activation=tf.nn.relu, name='l2_c', trainable=trainable)
             return net_2
 
 ################ Opt layer#####################
@@ -533,6 +539,10 @@ for ep in range(episode_num):  # 100000
     while not done:
         # action = None
         action = ddpg.choose_action(s)
+
+        # Add exploration noise
+        action = clipping(np.random.normal(action, var))
+
         # print("In DDPG main, x =", action)
         action, opt_grad = OptLayer_function(action, a_dim, a_bound, env)
         # print("opt_grad: ", opt_grad)
@@ -545,7 +555,7 @@ for ep in range(episode_num):  # 100000
         s_, r, done, info = env.step(action)
         # print(done)
         # print("{}, {}".format(ddpg.pointer, done))
-        ddpg.store_transition(s, action, r / 10, s_)
+        ddpg.store_transition(s, action, r, s_)
         if ddpg.pointer > c*MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
             # print("AAAAA")

@@ -272,7 +272,7 @@ class BSSEnv(gym.Env):
     def __calculate_lost_demand_new_allocation(self):
         full_lost = 0.0
         iteration = self.__t
-        # sum_y = sum(self.__yp[iteration]) + sum(self.__yn[iteration])
+        moving_cost = (sum(self.__yp[iteration])+sum(self.__yn[iteration]))/2
         assert abs(sum(self.__yp[iteration]) - sum(self.__yn[iteration])
                    ) < 1e-6, "sum(yp)={0}\nsum(yn)={1}\nyp={2}\nyn={3}".format(
                        sum(self.__yp[iteration]), sum(self.__yn[iteration]),
@@ -371,14 +371,14 @@ class BSSEnv(gym.Env):
                 lost_call += self.__fl[iteration][s][s1] - \
                     self.__xfl[iteration][s][s1]
 
-        return lost_call, full_lost, revenue
+        return lost_call, full_lost, moving_cost, revenue
 
     def step(self, action):
         # modify yp and yn here according to action
         self.__set_yp_yn_from_action(action)
-        lost_demand, full_lost_demand, revenue = self.__calculate_lost_demand_new_allocation(
+        lost_demand, full_lost_demand, moving_cost_demand, revenue = self.__calculate_lost_demand_new_allocation(
         )
-        r = -(lost_demand + full_lost_demand)
+        r = -(lost_demand + full_lost_demand + 2*moving_cost_demand)
         self.__t += 1
         done = self.__t >= self.ntimesteps
         return self._get_observation(), r, done, {
