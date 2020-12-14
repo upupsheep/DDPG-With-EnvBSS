@@ -214,6 +214,259 @@ def tf_clipping(x, name=None):
         return y[0]
 
 
+""" Writing activation function """
+
+
+def optLayer(y):
+    print("y: ", y)
+    # adjust to y
+    # exit(0)
+    # maxa = action[int(np.argmax(action))]
+    # mina = action[int(np.argmin(action))]
+    lower = np.zeros(a_dim, dtype=np.float32)
+    # y = np.zeros(a_dim)
+    # # print(env.nbikes,"bike_num")
+
+    # # print(a_bound,"abound")
+    # for i in range(a_dim):
+    #     y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
+    # print(y,"y")
+    # adjust to z
+    z = np.zeros(a_dim, dtype=np.float32)
+
+    #start algorithm#
+    phase = 0  # lower=0 , upeer=1 , done=2
+    C_unclamp = env.nbikes             # how many left bike to distribute
+    set_unclamp = set(range(a_dim))    # unclamp set
+    unclamp_num = a_dim                # unclamp number=n'
+    grad_z = np.zeros((a_dim, a_dim))   # grad_z is 4*4 arrray
+    while phase != 2:
+        sum_y = 0
+        set_clamp_round = set()  # indices clamped in this iteration of the while loop
+        # algorithm line 7
+        for i in range(a_dim):
+            if i in set_unclamp:
+                sum_y = sum_y+y[i]
+        for i in range(a_dim):
+            if i in set_unclamp:
+                z[i] = y[i]+(C_unclamp-sum_y)/unclamp_num
+        # print(z,"z")
+        # print(sum_y,"sum_y")
+        # algorithm line8
+        for i in range(a_dim):
+            if i in set_unclamp:
+                for j in range(a_dim):
+                    if j in set_unclamp:
+                        if (i != j):
+                            grad_z[i][j] = -1/unclamp_num
+                        else:
+                            grad_z[i][j] = 1 - (1/unclamp_num)
+       # print(grad_z)
+        # algorithm line 9
+        for j in range(a_dim):
+            if j not in set_unclamp:
+                for i in range(a_dim):
+                    grad_z[i][j] = 0
+      # print(grad_z,"grad before clamp in this iteration")
+
+        # algorithm lin 10~20
+        for i in range(a_dim):
+            if i in set_unclamp:
+                if z[i] < lower[i] and phase == 0:
+                    z[i] = lower[i]
+                    for j in range(a_dim):
+                        grad_z[i][j] = 0
+                    set_clamp_round.add(i)
+                elif (z[i] > a_bound[i]) and phase == 1:
+                    z[i] = a_bound[i]
+                    for j in range(a_dim):
+                        grad_z[i][j] = 0
+                    set_clamp_round.add(i)
+       # print(z,"z_after clamp")
+       # print(grad_z,"grad after clamp")
+        # algorithm 21~25
+        unclamp_num = unclamp_num-len(set_clamp_round)
+     #   print(unclamp_num,"unclamp")
+        for i in range(a_dim):
+            if i in set_clamp_round:
+                C_unclamp = C_unclamp-z[i]
+       # print(C_unclamp,"C")
+        set_unclamp = set_unclamp.difference(set_clamp_round)
+      #  print(set_unclamp,"unclamp set")
+        if len(set_clamp_round) == 0:
+            phase = phase+1
+
+    # debug after optlayer
+    final_sum = 0
+    for i in range(a_dim):
+        final_sum = final_sum+z[i]
+        # make sure not violate the local constraint
+        assert lower[i] <= z[i] <= a_bound[i]
+    final_sum = round(final_sum, 2)
+   # print(final_sum)
+    assert final_sum == env.nbikes     # make sure sum is equal to bike number
+    if np.sum(y) == env.nbikes:
+        assert z == y
+
+    print("z: ", sum(z))
+    return z
+
+
+# np_clipping = np.vectorize(clipping)  # vectorize the python function # <-- no need
+
+
+""" Gradient of Activation """
+
+
+def d_optLayer(y):
+    # adjust to y
+    # exit(0)
+    # maxa = action[int(np.argmax(action))]
+    # mina = action[int(np.argmin(action))]
+    lower = np.zeros(a_dim)
+    # y = np.zeros(a_dim)
+    # # print(env.nbikes,"bike_num")
+
+    # # print(a_bound,"abound")
+    # for i in range(a_dim):
+    #     y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
+    # # print(y,"y")
+    # adjust to z
+    z = np.zeros(a_dim)
+
+    #start algorithm#
+    phase = 0  # lower=0 , upeer=1 , done=2
+    C_unclamp = env.nbikes             # how many left bike to distribute
+    set_unclamp = set(range(a_dim))    # unclamp set
+    unclamp_num = a_dim                # unclamp number=n'
+    grad_z = np.zeros((a_dim, a_dim))   # grad_z is 4*4 arrray
+    while phase != 2:
+        sum_y = 0
+        set_clamp_round = set()  # indices clamped in this iteration of the while loop
+        # algorithm line 7
+        for i in range(a_dim):
+            if i in set_unclamp:
+                sum_y = sum_y+y[i]
+        for i in range(a_dim):
+            if i in set_unclamp:
+                z[i] = y[i]+(C_unclamp-sum_y)/unclamp_num
+        # print(z,"z")
+        # print(sum_y,"sum_y")
+        # algorithm line8
+        for i in range(a_dim):
+            if i in set_unclamp:
+                for j in range(a_dim):
+                    if j in set_unclamp:
+                        if (i != j):
+                            grad_z[i][j] = -1/unclamp_num
+                        else:
+                            grad_z[i][j] = 1 - (1/unclamp_num)
+       # print(grad_z)
+        # algorithm line 9
+        for j in range(a_dim):
+            if j not in set_unclamp:
+                for i in range(a_dim):
+                    grad_z[i][j] = 0
+      # print(grad_z,"grad before clamp in this iteration")
+
+        # algorithm lin 10~20
+        for i in range(a_dim):
+            if i in set_unclamp:
+                if z[i] < lower[i] and phase == 0:
+                    z[i] = lower[i]
+                    for j in range(a_dim):
+                        grad_z[i][j] = 0
+                    set_clamp_round.add(i)
+                elif (z[i] > a_bound[i]) and phase == 1:
+                    z[i] = a_bound[i]
+                    for j in range(a_dim):
+                        grad_z[i][j] = 0
+                    set_clamp_round.add(i)
+       # print(z,"z_after clamp")
+       # print(grad_z,"grad after clamp")
+        # algorithm 21~25
+        unclamp_num = unclamp_num-len(set_clamp_round)
+     #   print(unclamp_num,"unclamp")
+        for i in range(a_dim):
+            if i in set_clamp_round:
+                C_unclamp = C_unclamp-z[i]
+       # print(C_unclamp,"C")
+        set_unclamp = set_unclamp.difference(set_clamp_round)
+      #  print(set_unclamp,"unclamp set")
+        if len(set_clamp_round) == 0:
+            phase = phase+1
+
+    # debug after optlayer
+#     final_sum = 0
+#     for i in range(a_dim):
+#         final_sum = final_sum+z[i]
+#         # make sure not violate the local constraint
+#         assert lower[i] <= z[i] <= a_bound[i]
+#     final_sum = round(final_sum, 2)
+#    # print(final_sum)
+#     assert final_sum == env.nbikes     # make sure sum is equal to bike number
+#     if np.sum(y) == env.nbikes:
+#         assert z == y
+    return grad_z
+
+# np_d_clipping = np.vectorize(d_clipping) # don't need this one!
+
+
+def np_d_optLayer_32(x):
+    return d_clipping(x).astype(np.float32)
+
+
+def tf_d_optLayer(x, name=None):
+    with tf.compat.v1.name_scope(name, "d_optLayer", [x]) as name:
+        y = py_func(np_d_optLayer_32,  # forward pass function
+                    [x],
+                    [tf.float32],
+                    name=name,
+                    stateful=False)
+
+        # when using with the code, it is used to specify the rank of the input.
+        y[0].set_shape(x.get_shape())
+        return y[0]
+
+
+def py_func(func, inp, Tout, stateful=True, name=None, grad=None):
+    rnd_name = 'PyFuncGrad_1' + str(np.random.randint(0, 1E+2))
+
+    tf.RegisterGradient(rnd_name)(grad)
+    g = tf.compat.v1.get_default_graph()
+    with g.gradient_override_map({"PyFunc": rnd_name}):
+        return tf.compat.v1.py_func(func, inp, Tout, stateful=stateful, name=name)
+
+
+""" Gradient Function """
+
+
+def optLayer_grad(op, grad):
+    x = op.inputs[0]
+    n_gr = tf_d_optLayer(x)  # defining the gradient
+    return grad * n_gr
+
+
+""" Combining it all together """
+
+
+def np_optLayer_32(x):
+    return optLayer(x).astype(np.float32)
+
+
+def tf_optLayer(x, name=None):
+    with tf.compat.v1.name_scope(name, "optLayer", [x]) as name:
+        y = py_func(np_optLayer_32,  # forward pass function
+                    [x],
+                    [tf.float32],
+                    name=name,
+                    grad=optLayer_grad)  # the function that overrides gradient
+
+        # when using with the code, it is used to specify the rank of the input.
+        y[0].set_shape(x.get_shape())
+        return y[0]
+
+
 class DDPG(object):
     def __init__(self, a_dim, s_dim, a_bound,):
         self.memory = np.zeros(
@@ -274,21 +527,19 @@ class DDPG(object):
         # print("g and v [5]: ", self.grads_and_vars[5])
         # exit(0)
 
-        self.grads_and_vars[4] = (
-            self.grads_and_vars[4][0] @ opt_grad, self.grads_and_vars[4][1])
+        # self.grads_and_vars[4] = (
+        #     self.grads_and_vars[4][0] @ opt_grad, self.grads_and_vars[4][1])
 
         '''
         opt_weight = np.ones((self.a_dim, self.a_dim))
         opt_bias_grad = np.zeros((self.a_dim, self.a_dim))
         opt_bias_weight = np.zeros((self.a_dim, self.a_dim))
-
         tf_opt_grad = tf.convert_to_tensor(opt_grad, dtype=tf.float32)
         tf_opt_weight = tf.convert_to_tensor(opt_weight, dtype=tf.float32)
         tf_opt_bias_grad = tf.convert_to_tensor(
             opt_bias_grad, dtype=tf.float32)
         tf_opt_bias_weight = tf.convert_to_tensor(
             opt_bias_weight, dtype=tf.float32)
-
         self.grads_and_vars.append((tf_opt_grad, tf_opt_weight))
         self.grads_and_vars.append((tf_opt_bias_grad, tf_opt_bias_weight))
         '''
@@ -380,7 +631,8 @@ class DDPG(object):
             '''
             # customized activation function (clipping)
             a_clip = tf_clipping(a)
-            return a_clip
+            a_opt = tf_optLayer(a_clip)
+            return a_opt
 
     def _build_c(self, s, a, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
@@ -402,7 +654,7 @@ class DDPG(object):
 
             net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
                                    tf.reshape(
-                                       tf.matmul([a], w1_a), [-1, 400]) + b1 - penalty_term)  # (1, None, 30) -> (None, 30)
+                tf.matmul([a], w1_a), [-1, 400]) + b1 - penalty_term)  # (1, None, 30) -> (None, 30)
             # + tf.multiply(float(LAMBDA), xxyy)
             # Q(s,a)
             net_1 = tf.compat.v1.layers.dense(
@@ -541,10 +793,10 @@ for ep in range(episode_num):  # 100000
         action = ddpg.choose_action(s)
 
         # Add exploration noise
-        action = clipping(np.random.normal(action, var))
+        # action = clipping(np.random.normal(action, var))
 
         # print("In DDPG main, x =", action)
-        action, opt_grad = OptLayer_function(action, a_dim, a_bound, env)
+        # action, opt_grad = OptLayer_function(action, a_dim, a_bound, env)
         # print("opt_grad: ", opt_grad)
         # exit(0)
         # print(action,"After_modify")
