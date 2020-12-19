@@ -27,7 +27,7 @@ TAU = 0.001
 MEMORY_CAPACITY = 10000  # 10000
 c = 0.1  # 0.1
 BATCH_SIZE = 64  # 128
-episode_num = 10000  # 10000
+episode_num = 5000  # 10000
 LAMBDA = 10000
 EPSILON = 0.1
 #####################  BSS data functions  ####################
@@ -218,7 +218,7 @@ def tf_clipping(x, name=None):
 
 
 def optLayer(y):
-    print("y: ", y)
+    # print("y: ", y)
     # adjust to y
     # exit(0)
     # maxa = action[int(np.argmax(action))]
@@ -308,7 +308,7 @@ def optLayer(y):
     if np.sum(y) == env.nbikes:
         assert z == y
 
-    print("z: ", sum(z))
+    # print("z: ", sum(z))
     return z
 
 
