@@ -667,7 +667,7 @@ class DDPG(object):
 ################ Opt layer#####################
 
 
-def OptLayer_function(action, a_dim, a_bound, env):
+def OptLayer_function(action):
     # adjust to y
     # exit(0)
     maxa = action[int(np.argmax(action))]
@@ -793,7 +793,8 @@ for ep in range(episode_num):  # 100000
         action = ddpg.choose_action(s)
 
         # Add exploration noise
-        # action = clipping(np.random.normal(action, var))
+        action = clipping(np.random.normal(action, var))
+        action = OptLayer_function(action)
 
         # print("In DDPG main, x =", action)
         # action, opt_grad = OptLayer_function(action, a_dim, a_bound, env)
