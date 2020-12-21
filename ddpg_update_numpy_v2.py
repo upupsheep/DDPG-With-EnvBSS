@@ -86,6 +86,8 @@ def clipping(action_mtx):
     #     action = action_mtx * a_bound
     # print("scaled x: ", action)
     action = action_mtx[0] * a_bound
+    print("action mtx: ", action_mtx)
+    print("action: ", action)
     # adjust to y
     maxa = action[int(np.argmax(action))]
     mina = action[int(np.argmin(action))]
@@ -99,6 +101,7 @@ def clipping(action_mtx):
         is_nan.append(math.isnan(a))
     # print("is nan: ", is_nan)
     if np.all(is_nan):
+        exit(0)
         return np.array(a_bound)
     # '''
 
@@ -126,7 +129,7 @@ def clipping(action_mtx):
 
 
 def d_clipping(action_mtx):
-    # print("(d) action mtx: ", action_mtx)
+    print("(d) action mtx: ", action_mtx)
     x = action_mtx[0] * a_bound  # [[xx, xx, xx, xx]], and scaled_a here
     # print("scaled x: ", action)
     lower = np.zeros(a_dim)
@@ -139,6 +142,7 @@ def d_clipping(action_mtx):
     # print("is nan: ", is_nan)
     if np.all(is_nan):
         # exit(0)
+        # assert np.all(is_nan)
         x = np.array(a_bound)
     # '''
 
@@ -218,7 +222,7 @@ def tf_clipping(x, name=None):
 
 
 def optLayer(y):
-    # print("y: ", y)
+    # print("y: ", y.shape)
     # adjust to y
     # exit(0)
     # maxa = action[int(np.argmax(action))]
@@ -620,9 +624,9 @@ class DDPG(object):
     def _build_a(self, s, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
             net_1 = tf.compat.v1.layers.dense(
-                s, 400, activation=tf.nn.relu, name='l1', trainable=trainable)
+                s, 32, activation=tf.nn.relu, name='l1', trainable=trainable)
             net_2 = tf.compat.v1.layers.dense(
-                net_1, 300, activation=tf.nn.relu, name='l2', trainable=trainable)
+                net_1, 16, activation=tf.nn.relu, name='l2', trainable=trainable)
             a = tf.compat.v1.layers.dense(
                 net_2, self.a_dim, activation=tf.nn.tanh, name='a', trainable=trainable)
             '''
@@ -637,7 +641,7 @@ class DDPG(object):
     def _build_c(self, s, a, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
             # Q(s, a)
-            n_l1 = 400
+            n_l1 = 32
             w1_s = tf.compat.v1.get_variable(
                 'w1_s', [self.s_dim, n_l1], trainable=trainable)
             w1_a = tf.compat.v1.get_variable(
@@ -654,11 +658,11 @@ class DDPG(object):
 
             net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
                                    tf.reshape(
-                tf.matmul([a], w1_a), [-1, 400]) + b1 - penalty_term)  # (1, None, 30) -> (None, 30)
+                tf.matmul([a], w1_a), [-1, 32]) + b1 - penalty_term)  # (1, None, 30) -> (None, 30)
             # + tf.multiply(float(LAMBDA), xxyy)
             # Q(s,a)
             net_1 = tf.compat.v1.layers.dense(
-                net_1_act, 300, name='l1_c', trainable=trainable)
+                net_1_act, 16, name='l1_c', trainable=trainable)
 
             net_2 = tf.compat.v1.layers.dense(
                 net_1, 1, activation=tf.nn.relu, name='l2_c', trainable=trainable)
@@ -670,6 +674,7 @@ class DDPG(object):
 def OptLayer_function(action):
     # adjust to y
     # exit(0)
+    print("action: ", action)
     maxa = action[int(np.argmax(action))]
     mina = action[int(np.argmin(action))]
     lower = np.zeros(a_dim)
@@ -678,8 +683,11 @@ def OptLayer_function(action):
 
     # print(a_bound,"abound")
     for i in range(a_dim):
-        y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
-    # print(y,"y")
+        if action[i] <= a_bound[i] and action[i] >= lower[i]:  # no need to clip
+            y[i] = action[i]
+        else:
+            y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
+    print(y, "y")
     # adjust to z
     z = np.zeros(a_dim)
 
@@ -746,17 +754,19 @@ def OptLayer_function(action):
             phase = phase+1
 
     # debug after optlayer
+    print("z: ", z)
     final_sum = 0
     for i in range(a_dim):
         final_sum = final_sum+z[i]
         # make sure not violate the local constraint
         assert lower[i] <= z[i] <= a_bound[i]
     final_sum = round(final_sum, 2)
-   # print(final_sum)
+    print(final_sum)
     assert final_sum == env.nbikes     # make sure sum is equal to bike number
-    if np.sum(y) == env.nbikes:
-        assert z == y
-    return z, grad_z
+    # if np.sum(y) == env.nbikes:
+    #     print(y, env.nbikes)
+    #     assert z == y
+    return z
 
 
 ###############################  training  ####################################
@@ -791,10 +801,15 @@ for ep in range(episode_num):  # 100000
     while not done:
         # action = None
         action = ddpg.choose_action(s)
-
+        print("before: ", action)
+        # print("sum of action: ", sum(action))
         # Add exploration noise
-        action = clipping(np.random.normal(action, var))
-        action = OptLayer_function(action)
+        # action = clipping(np.random.normal(action, var))
+
+        # noise = np.random.randint(0, a_bound/2)
+        # action = OptLayer_function(np.random.normal(action, var))
+        # action = OptLayer_function(action + noise)
+        # print("after: ", action)
 
         # print("In DDPG main, x =", action)
         # action, opt_grad = OptLayer_function(action, a_dim, a_bound, env)
@@ -811,7 +826,7 @@ for ep in range(episode_num):  # 100000
         ddpg.store_transition(s, action, r, s_)
         if ddpg.pointer > c*MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
-            # print("AAAAA")
+            print("LEARN!!!")
             ddpg.learn()
         s = s_
         R += r
