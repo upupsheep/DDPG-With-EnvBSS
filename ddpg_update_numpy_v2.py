@@ -77,7 +77,7 @@ def read_supriyo_policy_results(env):
 def clipping(action_mtx):
     # print("\n--- In clipping activation function ---")
     # print("a_bound: ", a_bound)
-    # print("action mtx: ", action_mtx)
+    # print("action mtx: ", action_mtx.shape)
     # print("x: ", type(action_mtx))
     # if type(action_mtx) is tuple:
     #     # [[xx, xx, xx, xx]], and scaled_a here
@@ -85,41 +85,46 @@ def clipping(action_mtx):
     # else:
     #     action = action_mtx * a_bound
     # print("scaled x: ", action)
-    action = action_mtx[0] * a_bound
-    print("action mtx: ", action_mtx)
-    print("action: ", action)
-    # adjust to y
-    maxa = action[int(np.argmax(action))]
-    mina = action[int(np.argmin(action))]
-    lower = np.zeros(a_dim)
-    y = np.zeros(a_dim)
+    clipping_result = np.zeros(action_mtx.shape)
+    batch_num = action_mtx.shape[0]
+    for batch_idx in range(batch_num):
+        action = action_mtx[batch_idx] * a_bound
+        # print("action mtx: ", action_mtx)
+        # print("action: ", action)
+        # adjust to y
+        maxa = action[int(np.argmax(action))]
+        mina = action[int(np.argmin(action))]
+        lower = np.zeros(a_dim)
+        y = np.zeros(a_dim)
 
-    # Avoid [nan nan nan nan]
-    # '''
-    is_nan = []
-    for a in action:
-        is_nan.append(math.isnan(a))
-    # print("is nan: ", is_nan)
-    if np.all(is_nan):
-        exit(0)
-        return np.array(a_bound)
-    # '''
+        # Avoid [nan nan nan nan]
+        # '''
+        is_nan = []
+        for a in action:
+            is_nan.append(math.isnan(a))
+        # print("is nan: ", is_nan)
+        if np.all(is_nan):
+            # exit(0)
+            return np.array(a_bound)
+        # '''
 
-    # print(env.nbikes, "bike_num")
-    # print(a_bound, "abound")
-    for i in range(a_dim):
-        # if x[k] is in the bound, then no need to clip
-        if action[i] <= a_bound[i] and action[i] >= lower[i]:
-            y[i] = action[i]
-        else:
-            y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
-    # print("y: ", y)
-    # print("------------------\n")
+        # print(env.nbikes, "bike_num")
+        # print(a_bound, "abound")
+        for i in range(a_dim):
+            # if x[k] is in the bound, then no need to clip
+            if action[i] <= a_bound[i] and action[i] >= lower[i]:
+                y[i] = action[i]
+            else:
+                y[i] = lower[i]+(a_bound[i]-lower[i]) * \
+                    (action[i]-mina)/(maxa-mina)
+        # print("y: ", y)
+        # print("------------------\n")
 
-    mu = float(LAMBDA) * float(np.abs(1 - np.sum(y)) +
-                               np.abs(env.nbikes - np.sum(y)))
+        mu = float(LAMBDA) * float(np.abs(1 - np.sum(y)) +
+                                   np.abs(env.nbikes - np.sum(y)))
+        clipping_result[batch_idx] = y
 
-    return y
+    return clipping_result
 
 
 # np_clipping = np.vectorize(clipping)  # vectorize the python function # <-- no need
@@ -129,36 +134,43 @@ def clipping(action_mtx):
 
 
 def d_clipping(action_mtx):
-    print("(d) action mtx: ", action_mtx)
-    x = action_mtx[0] * a_bound  # [[xx, xx, xx, xx]], and scaled_a here
-    # print("scaled x: ", action)
-    lower = np.zeros(a_dim)
+    # print("(d) action mtx: ", action_mtx)
+    batch_num = action_mtx.shape[0]
+    clipping_gradient_result = np.zeros((a_dim, a_dim))
 
-    # Avoid [nan nan nan nan]
-    # '''
-    is_nan = []
-    for a in action:
-        is_nan.append(math.isnan(a))
-    # print("is nan: ", is_nan)
-    if np.all(is_nan):
-        # exit(0)
-        # assert np.all(is_nan)
-        x = np.array(a_bound)
-    # '''
+    for batch_idx in range(batch_num):
+        # [[xx, xx, xx, xx]], and scaled_a here
+        x = action_mtx[batch_idx] * a_bound
+        # print("scaled x: ", action)
+        lower = np.zeros(a_dim)
 
-    # compute gradient
-    max_i = np.argmax(x)
-    min_i = np.argmin(x)
-    # print("max_i: ", max_i)
-    # print("min_i: ", min_i)
+        # Avoid [nan nan nan nan]
+        # '''
+        is_nan = []
+        for a in action:
+            is_nan.append(math.isnan(a))
+        # print("is nan: ", is_nan)
+        if np.all(is_nan):
+            # exit(0)
+            # assert np.all(is_nan)
+            x = np.array(a_bound)
+        # '''
 
-    grad = np.zeros((a_dim, a_dim))
-    for i in range(a_dim):
-        if (i == max_i or i == min_i):
-            continue
-        # y[k] = upper[k] + (upper[k]-lower[k]) * {(x[i]-min(x))/(max(x)-min(x))}
-        grad[i][i] = (a_bound[i]-lower[i]) / (x[max_i] - x[min_i])
-    return grad
+        # compute gradient
+        max_i = np.argmax(x)
+        min_i = np.argmin(x)
+        # print("max_i: ", max_i)
+        # print("min_i: ", min_i)
+
+        grad = np.zeros((a_dim, a_dim))
+        for i in range(a_dim):
+            if (i == max_i or i == min_i):
+                continue
+            # y[k] = upper[k] + (upper[k]-lower[k]) * {(x[i]-min(x))/(max(x)-min(x))}
+            grad[i][i] = (a_bound[i]-lower[i]) / (x[max_i] - x[min_i])
+
+        clipping_gradient_result += grad
+    return clipping_gradient_result / batch_num
 
 # np_d_clipping = np.vectorize(d_clipping) # don't need this one!
 
@@ -195,6 +207,8 @@ def py_func(func, inp, Tout, stateful=True, name=None, grad=None):
 def clipping_grad(op, grad):
     x = op.inputs[0]
     n_gr = tf_d_clipping(x)  # defining the gradient
+    # grad * n_gr : [3, 3] vs [64, 3]
+
     return grad * n_gr
 
 
@@ -221,8 +235,8 @@ def tf_clipping(x, name=None):
 """ Writing activation function """
 
 
-def optLayer(y):
-    # print("y: ", y.shape)
+def optLayer(y_mtx):
+    print("y_mtx: ", y_mtx.shape)
     # adjust to y
     # exit(0)
     # maxa = action[int(np.argmax(action))]
@@ -231,89 +245,96 @@ def optLayer(y):
     # y = np.zeros(a_dim)
     # # print(env.nbikes,"bike_num")
 
+    batch_num = y_mtx.shape[0]
+    opt_result = np.zeros(y_mtx.shape)
     # # print(a_bound,"abound")
     # for i in range(a_dim):
     #     y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
     # print(y,"y")
-    # adjust to z
-    z = np.zeros(a_dim, dtype=np.float32)
+    for batch_idx in range(batch_num):
+        y = y_mtx[batch_idx]
+        # adjust to z
+        z = np.zeros(a_dim, dtype=np.float32)
 
-    #start algorithm#
-    phase = 0  # lower=0 , upeer=1 , done=2
-    C_unclamp = env.nbikes             # how many left bike to distribute
-    set_unclamp = set(range(a_dim))    # unclamp set
-    unclamp_num = a_dim                # unclamp number=n'
-    grad_z = np.zeros((a_dim, a_dim))   # grad_z is 4*4 arrray
-    while phase != 2:
-        sum_y = 0
-        set_clamp_round = set()  # indices clamped in this iteration of the while loop
-        # algorithm line 7
-        for i in range(a_dim):
-            if i in set_unclamp:
-                sum_y = sum_y+y[i]
-        for i in range(a_dim):
-            if i in set_unclamp:
-                z[i] = y[i]+(C_unclamp-sum_y)/unclamp_num
-        # print(z,"z")
-        # print(sum_y,"sum_y")
-        # algorithm line8
-        for i in range(a_dim):
-            if i in set_unclamp:
-                for j in range(a_dim):
-                    if j in set_unclamp:
-                        if (i != j):
-                            grad_z[i][j] = -1/unclamp_num
-                        else:
-                            grad_z[i][j] = 1 - (1/unclamp_num)
-       # print(grad_z)
-        # algorithm line 9
-        for j in range(a_dim):
-            if j not in set_unclamp:
-                for i in range(a_dim):
-                    grad_z[i][j] = 0
-      # print(grad_z,"grad before clamp in this iteration")
-
-        # algorithm lin 10~20
-        for i in range(a_dim):
-            if i in set_unclamp:
-                if z[i] < lower[i] and phase == 0:
-                    z[i] = lower[i]
+        #start algorithm#
+        phase = 0  # lower=0 , upeer=1 , done=2
+        C_unclamp = env.nbikes             # how many left bike to distribute
+        set_unclamp = set(range(a_dim))    # unclamp set
+        unclamp_num = a_dim                # unclamp number=n'
+        grad_z = np.zeros((a_dim, a_dim))   # grad_z is 4*4 arrray
+        while phase != 2:
+            sum_y = 0
+            set_clamp_round = set()  # indices clamped in this iteration of the while loop
+            # algorithm line 7
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    sum_y = sum_y+y[i]
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    z[i] = y[i]+(C_unclamp-sum_y)/unclamp_num
+            # print(z,"z")
+            # print(sum_y,"sum_y")
+            # algorithm line8
+            for i in range(a_dim):
+                if i in set_unclamp:
                     for j in range(a_dim):
+                        if j in set_unclamp:
+                            if (i != j):
+                                grad_z[i][j] = -1/unclamp_num
+                            else:
+                                grad_z[i][j] = 1 - (1/unclamp_num)
+        # print(grad_z)
+            # algorithm line 9
+            for j in range(a_dim):
+                if j not in set_unclamp:
+                    for i in range(a_dim):
                         grad_z[i][j] = 0
-                    set_clamp_round.add(i)
-                elif (z[i] > a_bound[i]) and phase == 1:
-                    z[i] = a_bound[i]
-                    for j in range(a_dim):
-                        grad_z[i][j] = 0
-                    set_clamp_round.add(i)
-       # print(z,"z_after clamp")
-       # print(grad_z,"grad after clamp")
-        # algorithm 21~25
-        unclamp_num = unclamp_num-len(set_clamp_round)
-     #   print(unclamp_num,"unclamp")
+        # print(grad_z,"grad before clamp in this iteration")
+
+            # algorithm lin 10~20
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    if z[i] < lower[i] and phase == 0:
+                        z[i] = lower[i]
+                        for j in range(a_dim):
+                            grad_z[i][j] = 0
+                        set_clamp_round.add(i)
+                    elif (z[i] > a_bound[i]) and phase == 1:
+                        z[i] = a_bound[i]
+                        for j in range(a_dim):
+                            grad_z[i][j] = 0
+                        set_clamp_round.add(i)
+        # print(z,"z_after clamp")
+        # print(grad_z,"grad after clamp")
+            # algorithm 21~25
+            unclamp_num = unclamp_num-len(set_clamp_round)
+        #   print(unclamp_num,"unclamp")
+            for i in range(a_dim):
+                if i in set_clamp_round:
+                    C_unclamp = C_unclamp-z[i]
+        # print(C_unclamp,"C")
+            set_unclamp = set_unclamp.difference(set_clamp_round)
+        #  print(set_unclamp,"unclamp set")
+            if len(set_clamp_round) == 0:
+                phase = phase+1
+
+        # debug after optlayer
+        final_sum = 0
         for i in range(a_dim):
-            if i in set_clamp_round:
-                C_unclamp = C_unclamp-z[i]
-       # print(C_unclamp,"C")
-        set_unclamp = set_unclamp.difference(set_clamp_round)
-      #  print(set_unclamp,"unclamp set")
-        if len(set_clamp_round) == 0:
-            phase = phase+1
+            final_sum = final_sum+z[i]
+            # make sure not violate the local constraint
+            assert lower[i] <= z[i] <= a_bound[i]
+        final_sum = round(final_sum, 2)
+    # print(final_sum)
+        assert final_sum == env.nbikes     # make sure sum is equal to bike number
+        if np.sum(y) == env.nbikes:
+            assert z == y
 
-    # debug after optlayer
-    final_sum = 0
-    for i in range(a_dim):
-        final_sum = final_sum+z[i]
-        # make sure not violate the local constraint
-        assert lower[i] <= z[i] <= a_bound[i]
-    final_sum = round(final_sum, 2)
-   # print(final_sum)
-    assert final_sum == env.nbikes     # make sure sum is equal to bike number
-    if np.sum(y) == env.nbikes:
-        assert z == y
-
-    # print("z: ", sum(z))
-    return z
+            # print("z: ", sum(z))
+            # opt_result[batch_idx] = z
+        # print("opt_result: ", opt_result)
+        opt_result[batch_idx] = z
+    return opt_result
 
 
 # np_clipping = np.vectorize(clipping)  # vectorize the python function # <-- no need
@@ -322,7 +343,7 @@ def optLayer(y):
 """ Gradient of Activation """
 
 
-def d_optLayer(y):
+def d_optLayer(y_mtx):
     # adjust to y
     # exit(0)
     # maxa = action[int(np.argmax(action))]
@@ -336,88 +357,94 @@ def d_optLayer(y):
     #     y[i] = lower[i]+(a_bound[i]-lower[i])*(action[i]-mina)/(maxa-mina)
     # # print(y,"y")
     # adjust to z
-    z = np.zeros(a_dim)
 
-    #start algorithm#
-    phase = 0  # lower=0 , upeer=1 , done=2
-    C_unclamp = env.nbikes             # how many left bike to distribute
-    set_unclamp = set(range(a_dim))    # unclamp set
-    unclamp_num = a_dim                # unclamp number=n'
-    grad_z = np.zeros((a_dim, a_dim))   # grad_z is 4*4 arrray
-    while phase != 2:
-        sum_y = 0
-        set_clamp_round = set()  # indices clamped in this iteration of the while loop
-        # algorithm line 7
-        for i in range(a_dim):
-            if i in set_unclamp:
-                sum_y = sum_y+y[i]
-        for i in range(a_dim):
-            if i in set_unclamp:
-                z[i] = y[i]+(C_unclamp-sum_y)/unclamp_num
-        # print(z,"z")
-        # print(sum_y,"sum_y")
-        # algorithm line8
-        for i in range(a_dim):
-            if i in set_unclamp:
-                for j in range(a_dim):
-                    if j in set_unclamp:
-                        if (i != j):
-                            grad_z[i][j] = -1/unclamp_num
-                        else:
-                            grad_z[i][j] = 1 - (1/unclamp_num)
-       # print(grad_z)
-        # algorithm line 9
-        for j in range(a_dim):
-            if j not in set_unclamp:
-                for i in range(a_dim):
-                    grad_z[i][j] = 0
-      # print(grad_z,"grad before clamp in this iteration")
+    opt_gradient_result = np.zeros((a_dim, a_dim))
+    batch_num = y_mtx.shape[0]
+    for batch_idx in range(batch_num):
+        y = y_mtx[batch_idx]
+        z = np.zeros(a_dim)
 
-        # algorithm lin 10~20
-        for i in range(a_dim):
-            if i in set_unclamp:
-                if z[i] < lower[i] and phase == 0:
-                    z[i] = lower[i]
+        #start algorithm#
+        phase = 0  # lower=0 , upeer=1 , done=2
+        C_unclamp = env.nbikes             # how many left bike to distribute
+        set_unclamp = set(range(a_dim))    # unclamp set
+        unclamp_num = a_dim                # unclamp number=n'
+        grad_z = np.zeros((a_dim, a_dim))   # grad_z is 4*4 arrray
+        while phase != 2:
+            sum_y = 0
+            set_clamp_round = set()  # indices clamped in this iteration of the while loop
+            # algorithm line 7
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    sum_y = sum_y+y[i]
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    z[i] = y[i]+(C_unclamp-sum_y)/unclamp_num
+            # print(z,"z")
+            # print(sum_y,"sum_y")
+            # algorithm line8
+            for i in range(a_dim):
+                if i in set_unclamp:
                     for j in range(a_dim):
+                        if j in set_unclamp:
+                            if (i != j):
+                                grad_z[i][j] = -1/unclamp_num
+                            else:
+                                grad_z[i][j] = 1 - (1/unclamp_num)
+        # print(grad_z)
+            # algorithm line 9
+            for j in range(a_dim):
+                if j not in set_unclamp:
+                    for i in range(a_dim):
                         grad_z[i][j] = 0
-                    set_clamp_round.add(i)
-                elif (z[i] > a_bound[i]) and phase == 1:
-                    z[i] = a_bound[i]
-                    for j in range(a_dim):
-                        grad_z[i][j] = 0
-                    set_clamp_round.add(i)
-       # print(z,"z_after clamp")
-       # print(grad_z,"grad after clamp")
-        # algorithm 21~25
-        unclamp_num = unclamp_num-len(set_clamp_round)
-     #   print(unclamp_num,"unclamp")
-        for i in range(a_dim):
-            if i in set_clamp_round:
-                C_unclamp = C_unclamp-z[i]
-       # print(C_unclamp,"C")
-        set_unclamp = set_unclamp.difference(set_clamp_round)
-      #  print(set_unclamp,"unclamp set")
-        if len(set_clamp_round) == 0:
-            phase = phase+1
+        # print(grad_z,"grad before clamp in this iteration")
 
-    # debug after optlayer
-#     final_sum = 0
-#     for i in range(a_dim):
-#         final_sum = final_sum+z[i]
-#         # make sure not violate the local constraint
-#         assert lower[i] <= z[i] <= a_bound[i]
-#     final_sum = round(final_sum, 2)
-#    # print(final_sum)
-#     assert final_sum == env.nbikes     # make sure sum is equal to bike number
-#     if np.sum(y) == env.nbikes:
-#         assert z == y
-    return grad_z
+            # algorithm lin 10~20
+            for i in range(a_dim):
+                if i in set_unclamp:
+                    if z[i] < lower[i] and phase == 0:
+                        z[i] = lower[i]
+                        for j in range(a_dim):
+                            grad_z[i][j] = 0
+                        set_clamp_round.add(i)
+                    elif (z[i] > a_bound[i]) and phase == 1:
+                        z[i] = a_bound[i]
+                        for j in range(a_dim):
+                            grad_z[i][j] = 0
+                        set_clamp_round.add(i)
+        # print(z,"z_after clamp")
+        # print(grad_z,"grad after clamp")
+            # algorithm 21~25
+            unclamp_num = unclamp_num-len(set_clamp_round)
+        #   print(unclamp_num,"unclamp")
+            for i in range(a_dim):
+                if i in set_clamp_round:
+                    C_unclamp = C_unclamp-z[i]
+        # print(C_unclamp,"C")
+            set_unclamp = set_unclamp.difference(set_clamp_round)
+        #  print(set_unclamp,"unclamp set")
+            if len(set_clamp_round) == 0:
+                phase = phase+1
+
+        # debug after optlayer
+    #     final_sum = 0
+    #     for i in range(a_dim):
+    #         final_sum = final_sum+z[i]
+    #         # make sure not violate the local constraint
+    #         assert lower[i] <= z[i] <= a_bound[i]
+    #     final_sum = round(final_sum, 2)
+    #    # print(final_sum)
+    #     assert final_sum == env.nbikes     # make sure sum is equal to bike number
+    #     if np.sum(y) == env.nbikes:
+    #         assert z == y
+        opt_gradient_result += grad_z
+    return opt_gradient_result / batch_num
 
 # np_d_clipping = np.vectorize(d_clipping) # don't need this one!
 
 
 def np_d_optLayer_32(x):
-    return d_clipping(x).astype(np.float32)
+    return d_optLayer(x).astype(np.float32)
 
 
 def tf_d_optLayer(x, name=None):
@@ -448,6 +475,10 @@ def py_func(func, inp, Tout, stateful=True, name=None, grad=None):
 def optLayer_grad(op, grad):
     x = op.inputs[0]
     n_gr = tf_d_optLayer(x)  # defining the gradient
+    print('grad: ', grad)
+    print('n_gr: ', n_gr)
+    # exit(0)
+    # print('mul: ', grad * n_gr)
     return grad * n_gr
 
 
@@ -562,8 +593,9 @@ class DDPG(object):
 
     def choose_action(self, s):
         # print("self.a: ", self.a)
-        return self.sess.run(self.a, {self.S: s[np.newaxis, :]})
-        # return self.sess.run(self.a, {self.S: s[np.newaxis, :]})[0]
+        # return self.sess.run(self.a, {self.S: s[np.newaxis, :]})
+        # print("AAAA: ", self.sess.run(self.a, {self.S: s[np.newaxis, :]}))
+        return self.sess.run(self.a, {self.S: s[np.newaxis, :]})[0]
 
     def learn(self):
         # print("learn!!!")
@@ -574,8 +606,7 @@ class DDPG(object):
         #     print("variable: ", k)
         #     # print("shape: ", v.shape)
         #     # print(v)
-        # exit(0)
-
+        # # exit(0)
         self.sess.run(self.soft_replace)
 
         indices = np.random.choice(MEMORY_CAPACITY, size=BATCH_SIZE)
@@ -608,6 +639,7 @@ class DDPG(object):
         print(g[4][1].shape)
         print(g.gg)  # to terminal
         '''
+        # print("bs: ", bs)
         self.sess.run(self.atrain, {self.S: bs})
 
         self.sess.run(self.ctrain, {self.S: bs,
@@ -663,6 +695,7 @@ class DDPG(object):
             # Q(s,a)
             net_1 = tf.compat.v1.layers.dense(
                 net_1_act, 16, name='l1_c', trainable=trainable)
+            # net_1 = tf.nn.relu(tf.matmul(s, w1_s) + tf.matmul(a, w1_a) + b1)
 
             net_2 = tf.compat.v1.layers.dense(
                 net_1, 1, activation=tf.nn.relu, name='l2_c', trainable=trainable)
@@ -802,6 +835,8 @@ for ep in range(episode_num):  # 100000
         # action = None
         action = ddpg.choose_action(s)
         print("before: ", action)
+        # if np.all(action == 30.):
+        #     exit(0)
         # print("sum of action: ", sum(action))
         # Add exploration noise
         # action = clipping(np.random.normal(action, var))
