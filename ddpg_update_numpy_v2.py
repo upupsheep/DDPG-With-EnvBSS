@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 import os.path
 import sys
 import math
+import time
 
 import gym
 import numpy as np
@@ -77,7 +78,7 @@ def read_supriyo_policy_results(env):
 def clipping(action_mtx):
     # print("\n--- In clipping activation function ---")
     # print("a_bound: ", a_bound)
-    # print("action mtx: ", action_mtx.shape)
+    print("action mtx: ", action_mtx)
     # print("x: ", type(action_mtx))
     # if type(action_mtx) is tuple:
     #     # [[xx, xx, xx, xx]], and scaled_a here
@@ -90,7 +91,7 @@ def clipping(action_mtx):
     for batch_idx in range(batch_num):
         action = action_mtx[batch_idx] * a_bound
         # print("action mtx: ", action_mtx)
-        # print("action: ", action)
+        print("action: ", action)
         # adjust to y
         maxa = action[int(np.argmax(action))]
         mina = action[int(np.argmin(action))]
@@ -104,7 +105,7 @@ def clipping(action_mtx):
             is_nan.append(math.isnan(a))
         # print("is nan: ", is_nan)
         if np.all(is_nan):
-            # exit(0)
+            exit(0)
             return np.array(a_bound)
         # '''
 
@@ -134,7 +135,7 @@ def clipping(action_mtx):
 
 
 def d_clipping(action_mtx):
-    # print("(d) action mtx: ", action_mtx)
+    print("(d) action mtx: ", action_mtx)
     batch_num = action_mtx.shape[0]
     clipping_gradient_result = np.zeros((a_dim, a_dim))
 
@@ -151,7 +152,7 @@ def d_clipping(action_mtx):
             is_nan.append(math.isnan(a))
         # print("is nan: ", is_nan)
         if np.all(is_nan):
-            # exit(0)
+            exit(0)
             # assert np.all(is_nan)
             x = np.array(a_bound)
         # '''
@@ -170,6 +171,7 @@ def d_clipping(action_mtx):
             grad[i][i] = (a_bound[i]-lower[i]) / (x[max_i] - x[min_i])
 
         clipping_gradient_result += grad
+    print('clipping_gradient: ', clipping_gradient_result)
     return clipping_gradient_result / batch_num
 
 # np_d_clipping = np.vectorize(d_clipping) # don't need this one!
@@ -208,8 +210,8 @@ def clipping_grad(op, grad):
     x = op.inputs[0]
     n_gr = tf_d_clipping(x)  # defining the gradient
     # grad * n_gr : [3, 3] vs [64, 3]
-
-    return grad * n_gr
+    n_gr_avg = tf.reduce_mean(n_gr, 0)
+    return grad * n_gr_avg
 
 
 """ Combining it all together """
@@ -319,6 +321,7 @@ def optLayer(y_mtx):
                 phase = phase+1
 
         # debug after optlayer
+        print('z: ', z)
         final_sum = 0
         for i in range(a_dim):
             final_sum = final_sum+z[i]
@@ -479,7 +482,11 @@ def optLayer_grad(op, grad):
     print('n_gr: ', n_gr)
     # exit(0)
     # print('mul: ', grad * n_gr)
-    return grad * n_gr
+    # [3,3] vs [64,3]
+    # print('[0]: ', tf.gather(n_gr, 0))
+    # exit(0)
+    n_gr_avg = tf.reduce_mean(n_gr, 0)
+    return grad * n_gr_avg
 
 
 """ Combining it all together """
@@ -859,6 +866,7 @@ for ep in range(episode_num):  # 100000
         # print(done)
         # print("{}, {}".format(ddpg.pointer, done))
         ddpg.store_transition(s, action, r, s_)
+        # time.sleep(1)
         if ddpg.pointer > c*MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
             print("LEARN!!!")
