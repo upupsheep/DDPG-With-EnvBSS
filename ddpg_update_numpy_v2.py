@@ -35,50 +35,14 @@ EPSILON = 0.1
 # penalty term
 mu = 0.0
 
-
-def get_supriyo_policy_action(env, obs, policy):
-    ypcmu, yncmu = policy
-    env = env.unwrapped
-    current_alloc = obs[env.nzones:2 * env.nzones]
-    # print(current_alloc)
-    # print(sum(current_alloc))
-
-    current_time = int(obs[-1])
-    # print(current_alloc)
-    yp_t = np.array(ypcmu[current_time])
-    yn_t = np.array(yncmu[current_time])
-    return current_alloc + yn_t - yp_t
-
-
-def read_supriyo_policy_results(env):
-    env = env.unwrapped
-    scenario = env._scenario
-    ypcmu = [[0.0 for k in range(env.nzones)] for j in range(env.ntimesteps)]
-    yncmu = [[0.0 for k in range(env.nzones)] for j in range(env.ntimesteps)]
-    f1 = open(os.path.join(env.data_dir, "Our_policy",
-                           "policy_result{0}.csv".format(scenario)))
-    line = f1.readline()
-    # line = f1.readline()
-    print(scenario)
-    while(line != ""):
-        line = line.strip(" \n")
-        line = line.split(",")
-        if(int(line[0]) < 100):
-            ypcmu[int(line[0]) + 1][int(line[1])] = float(line[2])  # output
-            yncmu[int(line[0]) + 1][int(line[1])] = float(line[3])  # input
-        line = f1.readline()
-    f1.close()
-    return (ypcmu, yncmu)
-
-
 ###############################  DDPG  ####################################
 """ Writing activation function """
 
 
 def clipping(action_mtx):
-    # print("\n--- In clipping activation function ---")
+    print("\n--- In clipping activation function ---")
     # print("a_bound: ", a_bound)
-    print("action mtx: ", action_mtx)
+    print("clipping action mtx: ", action_mtx)
     # print("x: ", type(action_mtx))
     # if type(action_mtx) is tuple:
     #     # [[xx, xx, xx, xx]], and scaled_a here
@@ -91,7 +55,7 @@ def clipping(action_mtx):
     for batch_idx in range(batch_num):
         action = action_mtx[batch_idx] * a_bound
         # print("action mtx: ", action_mtx)
-        print("action: ", action)
+        print("clipping action: ", action)
         # adjust to y
         maxa = action[int(np.argmax(action))]
         mina = action[int(np.argmin(action))]
@@ -118,8 +82,11 @@ def clipping(action_mtx):
             else:
                 y[i] = lower[i]+(a_bound[i]-lower[i]) * \
                     (action[i]-mina)/(maxa-mina)
-        # print("y: ", y)
-        # print("------------------\n")
+                # if math.isnan(y[i])
+                if maxa == mina:
+                    exit(0)
+        print("clipping y: ", y)
+        print("------------------\n")
 
         mu = float(LAMBDA) * float(np.abs(1 - np.sum(y)) +
                                    np.abs(env.nbikes - np.sum(y)))
@@ -135,7 +102,8 @@ def clipping(action_mtx):
 
 
 def d_clipping(action_mtx):
-    print("(d) action mtx: ", action_mtx)
+    print("\n--- In (d) clipping activation function ---")
+    print("(d) action mtx: ", action_mtx * a_bound)
     batch_num = action_mtx.shape[0]
     clipping_gradient_result = np.zeros((a_dim, a_dim))
 
@@ -171,7 +139,8 @@ def d_clipping(action_mtx):
             grad[i][i] = (a_bound[i]-lower[i]) / (x[max_i] - x[min_i])
 
         clipping_gradient_result += grad
-    print('clipping_gradient: ', clipping_gradient_result)
+    print('clipping_gradient: ', clipping_gradient_result / batch_num)
+    print("------------------\n")
     return clipping_gradient_result / batch_num
 
 # np_d_clipping = np.vectorize(d_clipping) # don't need this one!
@@ -238,7 +207,8 @@ def tf_clipping(x, name=None):
 
 
 def optLayer(y_mtx):
-    print("y_mtx: ", y_mtx.shape)
+    print("\n--- In optLayer activation function ---")
+    print("optlayer y_mtx: ", y_mtx.shape)
     # adjust to y
     # exit(0)
     # maxa = action[int(np.argmax(action))]
@@ -321,7 +291,7 @@ def optLayer(y_mtx):
                 phase = phase+1
 
         # debug after optlayer
-        print('z: ', z)
+        print('optlayer z: ', z)
         final_sum = 0
         for i in range(a_dim):
             final_sum = final_sum+z[i]
@@ -337,6 +307,7 @@ def optLayer(y_mtx):
             # opt_result[batch_idx] = z
         # print("opt_result: ", opt_result)
         opt_result[batch_idx] = z
+        print("------------------\n")
     return opt_result
 
 
@@ -347,6 +318,7 @@ def optLayer(y_mtx):
 
 
 def d_optLayer(y_mtx):
+    print("\n--- In (d) optLayer activation function ---")
     # adjust to y
     # exit(0)
     # maxa = action[int(np.argmax(action))]
@@ -441,6 +413,8 @@ def d_optLayer(y_mtx):
     #     if np.sum(y) == env.nbikes:
     #         assert z == y
         opt_gradient_result += grad_z
+    print("opt_gradient: ", opt_gradient_result / batch_num)
+    print("------------------\n")
     return opt_gradient_result / batch_num
 
 # np_d_clipping = np.vectorize(d_clipping) # don't need this one!
@@ -613,7 +587,7 @@ class DDPG(object):
         #     print("variable: ", k)
         #     # print("shape: ", v.shape)
         #     # print(v)
-        # # exit(0)
+        # exit(0)
         self.sess.run(self.soft_replace)
 
         indices = np.random.choice(MEMORY_CAPACITY, size=BATCH_SIZE)
@@ -623,9 +597,9 @@ class DDPG(object):
         br = bt[:, -self.s_dim - 1: -self.s_dim]
         bs_ = bt[:, -self.s_dim:]
 
-        # a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
+        a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
         # a, g = self.sess.run(self.atrain, {self.S: bs})
-        '''
+        # '''
         # one more layer 9, 2 >> 11, 2  but add(a_loss, self.ae_params) become 4, 2
         print("=== g ===")
         print(np.array(g).shape)
@@ -644,10 +618,17 @@ class DDPG(object):
         print("QQQQ")
         print(g[4][0].shape)
         print(g[4][1].shape)
+        print("QQQQQQ")
+        print(g[5][0].shape)
+        print(g[5][1].shape)
+        print("-------")
+        print(g[4][0])
+        print("-------")
+        print(g[4][1])
         print(g.gg)  # to terminal
-        '''
+        # '''
         # print("bs: ", bs)
-        self.sess.run(self.atrain, {self.S: bs})
+        # self.sess.run(self.atrain, {self.S: bs})
 
         self.sess.run(self.ctrain, {self.S: bs,
                                     self.a: ba, self.R: br, self.S_: bs_})
@@ -663,11 +644,11 @@ class DDPG(object):
     def _build_a(self, s, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
             net_1 = tf.compat.v1.layers.dense(
-                s, 32, activation=tf.nn.relu, name='l1', trainable=trainable)
+                s, 32, activation=tf.nn.relu, name='l1', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1),  trainable=trainable)
             net_2 = tf.compat.v1.layers.dense(
-                net_1, 16, activation=tf.nn.relu, name='l2', trainable=trainable)
+                net_1, 16, activation=tf.nn.relu, name='l2', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1), trainable=trainable)
             a = tf.compat.v1.layers.dense(
-                net_2, self.a_dim, activation=tf.nn.tanh, name='a', trainable=trainable)
+                net_2, self.a_dim, activation=tf.nn.tanh, name='a', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1), trainable=trainable)
             '''
             scaled_a = tf.multiply(a, self.a_bound, name='scaled_a')
             print('scaled_a: ', scaled_a)
@@ -701,11 +682,11 @@ class DDPG(object):
             # + tf.multiply(float(LAMBDA), xxyy)
             # Q(s,a)
             net_1 = tf.compat.v1.layers.dense(
-                net_1_act, 16, name='l1_c', trainable=trainable)
+                net_1_act, 16, name='l1_c', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1), trainable=trainable)
             # net_1 = tf.nn.relu(tf.matmul(s, w1_s) + tf.matmul(a, w1_a) + b1)
 
             net_2 = tf.compat.v1.layers.dense(
-                net_1, 1, activation=tf.nn.relu, name='l2_c', trainable=trainable)
+                net_1, 1, activation=tf.nn.relu, name='l2_c', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1), trainable=trainable)
             return net_2
 
 ################ Opt layer#####################
@@ -866,7 +847,7 @@ for ep in range(episode_num):  # 100000
         # print(done)
         # print("{}, {}".format(ddpg.pointer, done))
         ddpg.store_transition(s, action, r, s_)
-        # time.sleep(1)
+        # time.sleep(0.5)
         if ddpg.pointer > c*MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
             print("LEARN!!!")
