@@ -84,8 +84,8 @@ def clipping(action_mtx):
                 y[i] = lower[i]+(a_bound[i]-lower[i]) * \
                     (action[i]-mina)/(maxa-mina)
                 # if math.isnan(y[i])
-                if maxa == mina:
-                    exit(0)
+                # if maxa == mina:
+                #     exit(0)
         print("clipping y: ", y)
         print("------------------\n")
 
