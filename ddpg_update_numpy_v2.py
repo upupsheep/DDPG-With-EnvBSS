@@ -64,6 +64,7 @@ def clipping(action_mtx):
 
         # Avoid [nan nan nan nan]
         # '''
+
         is_nan = []
         for a in action:
             is_nan.append(math.isnan(a))
@@ -132,6 +133,7 @@ def d_clipping(action_mtx):
         # print("min_i: ", min_i)
 
         grad = np.zeros((a_dim, a_dim))
+
         for i in range(a_dim):
             if (i == max_i or i == min_i):
                 continue
@@ -590,16 +592,21 @@ class DDPG(object):
         # exit(0)
         self.sess.run(self.soft_replace)
 
-        indices = np.random.choice(MEMORY_CAPACITY, size=BATCH_SIZE)
+        # indices = np.random.choice(MEMORY_CAPACITY, size=BATCH_SIZE)
+        # Get sampling range
+        record_range = min(self.pointer, MEMORY_CAPACITY)
+        # Randomly sample indices
+        indices = np.random.choice(record_range, size=BATCH_SIZE)
+
         bt = self.memory[indices, :]
         bs = bt[:, :self.s_dim]
         ba = bt[:, self.s_dim: self.s_dim + self.a_dim]
         br = bt[:, -self.s_dim - 1: -self.s_dim]
         bs_ = bt[:, -self.s_dim:]
 
-        a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
+        # a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
         # a, g = self.sess.run(self.atrain, {self.S: bs})
-        # '''
+        '''
         # one more layer 9, 2 >> 11, 2  but add(a_loss, self.ae_params) become 4, 2
         print("=== g ===")
         print(np.array(g).shape)
@@ -622,13 +629,13 @@ class DDPG(object):
         print(g[5][0].shape)
         print(g[5][1].shape)
         print("-------")
-        print(g[4][0])
+        print(g[6][0])
         print("-------")
-        print(g[4][1])
+        print(g[8][0])
         print(g.gg)  # to terminal
-        # '''
+        '''
         # print("bs: ", bs)
-        # self.sess.run(self.atrain, {self.S: bs})
+        self.sess.run(self.atrain, {self.S: bs})
 
         self.sess.run(self.ctrain, {self.S: bs,
                                     self.a: ba, self.R: br, self.S_: bs_})
@@ -655,7 +662,11 @@ class DDPG(object):
             '''
             # customized activation function (clipping)
             a_clip = tf_clipping(a)
+            # a_clip = tf.compat.v1.layers.dense(a, self.a_dim, activation=tf_clipping, name='a_clip',
+            #                                    kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1), trainable=trainable)
             a_opt = tf_optLayer(a_clip)
+            # a_opt = tf.compat.v1.layers.dense(a_clip, self.a_dim, activation=tf_optLayer, name='a_opt',
+            #                                   kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1), trainable=trainable)
             return a_opt
 
     def _build_c(self, s, a, scope, trainable):
@@ -823,6 +834,8 @@ for ep in range(episode_num):  # 100000
         # action = None
         action = ddpg.choose_action(s)
         print("before: ", action)
+        if action[0] == 0. and action[1] == 0. and action[2] == 0.:
+            exit(0)
         # if np.all(action == 30.):
         #     exit(0)
         # print("sum of action: ", sum(action))
