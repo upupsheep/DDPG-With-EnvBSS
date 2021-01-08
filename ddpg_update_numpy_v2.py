@@ -40,9 +40,9 @@ mu = 0.0
 
 
 def clipping(action_mtx):
-    print("\n--- In clipping activation function ---")
+    # print("\n--- In clipping activation function ---")
     # print("a_bound: ", a_bound)
-    print("clipping action mtx: ", action_mtx)
+    # print("clipping action mtx: ", action_mtx)
     # print("x: ", type(action_mtx))
     # if type(action_mtx) is tuple:
     #     # [[xx, xx, xx, xx]], and scaled_a here
@@ -55,7 +55,7 @@ def clipping(action_mtx):
     for batch_idx in range(batch_num):
         action = action_mtx[batch_idx] * a_bound
         # print("action mtx: ", action_mtx)
-        print("clipping action: ", action)
+        # print("clipping action: ", action)
         # adjust to y
         maxa = action[int(np.argmax(action))]
         mina = action[int(np.argmin(action))]
@@ -82,12 +82,12 @@ def clipping(action_mtx):
                 y[i] = action[i]
             else:
                 y[i] = lower[i]+(a_bound[i]-lower[i]) * \
-                    (action[i]-mina)/(maxa-mina)
+                    (action[i]-mina)/(maxa-mina+1e-6)
                 # if math.isnan(y[i])
                 # if maxa == mina:
                 #     exit(0)
-        print("clipping y: ", y)
-        print("------------------\n")
+        # print("clipping y: ", y)
+        # print("------------------\n")
 
         mu = float(LAMBDA) * float(np.abs(1 - np.sum(y)) +
                                    np.abs(env.nbikes - np.sum(y)))
@@ -103,8 +103,8 @@ def clipping(action_mtx):
 
 
 def d_clipping(action_mtx):
-    print("\n--- In (d) clipping activation function ---")
-    print("(d) action mtx: ", action_mtx * a_bound)
+    # print("\n--- In (d) clipping activation function ---")
+    # print("(d) action mtx: ", action_mtx * a_bound)
     batch_num = action_mtx.shape[0]
     clipping_gradient_result = np.zeros((a_dim, a_dim))
 
@@ -138,11 +138,11 @@ def d_clipping(action_mtx):
             if (i == max_i or i == min_i):
                 continue
             # y[k] = upper[k] + (upper[k]-lower[k]) * {(x[i]-min(x))/(max(x)-min(x))}
-            grad[i][i] = (a_bound[i]-lower[i]) / (x[max_i] - x[min_i])
+            grad[i][i] = (a_bound[i]-lower[i]) / (x[max_i] - x[min_i] + 1e-6)
 
         clipping_gradient_result += grad
-    print('clipping_gradient: ', clipping_gradient_result / batch_num)
-    print("------------------\n")
+    # print('clipping_gradient: ', clipping_gradient_result / batch_num)
+    # print("------------------\n")
     return clipping_gradient_result / batch_num
 
 # np_d_clipping = np.vectorize(d_clipping) # don't need this one!
@@ -209,8 +209,8 @@ def tf_clipping(x, name=None):
 
 
 def optLayer(y_mtx):
-    print("\n--- In optLayer activation function ---")
-    print("optlayer y_mtx: ", y_mtx.shape)
+    # print("\n--- In optLayer activation function ---")
+    # print("optlayer y_mtx: ", y_mtx.shape)
     # adjust to y
     # exit(0)
     # maxa = action[int(np.argmax(action))]
@@ -293,7 +293,7 @@ def optLayer(y_mtx):
                 phase = phase+1
 
         # debug after optlayer
-        print('optlayer z: ', z)
+        # print('optlayer z: ', z)
         final_sum = 0
         for i in range(a_dim):
             final_sum = final_sum+z[i]
@@ -309,7 +309,7 @@ def optLayer(y_mtx):
             # opt_result[batch_idx] = z
         # print("opt_result: ", opt_result)
         opt_result[batch_idx] = z
-        print("------------------\n")
+        # print("------------------\n")
     return opt_result
 
 
@@ -320,7 +320,7 @@ def optLayer(y_mtx):
 
 
 def d_optLayer(y_mtx):
-    print("\n--- In (d) optLayer activation function ---")
+    # print("\n--- In (d) optLayer activation function ---")
     # adjust to y
     # exit(0)
     # maxa = action[int(np.argmax(action))]
@@ -415,8 +415,8 @@ def d_optLayer(y_mtx):
     #     if np.sum(y) == env.nbikes:
     #         assert z == y
         opt_gradient_result += grad_z
-    print("opt_gradient: ", opt_gradient_result / batch_num)
-    print("------------------\n")
+    # print("opt_gradient: ", opt_gradient_result / batch_num)
+    # print("------------------\n")
     return opt_gradient_result / batch_num
 
 # np_d_clipping = np.vectorize(d_clipping) # don't need this one!
@@ -454,8 +454,8 @@ def py_func(func, inp, Tout, stateful=True, name=None, grad=None):
 def optLayer_grad(op, grad):
     x = op.inputs[0]
     n_gr = tf_d_optLayer(x)  # defining the gradient
-    print('grad: ', grad)
-    print('n_gr: ', n_gr)
+    # print('grad: ', grad)
+    # print('n_gr: ', n_gr)
     # exit(0)
     # print('mul: ', grad * n_gr)
     # [3,3] vs [64,3]
@@ -833,7 +833,7 @@ for ep in range(episode_num):  # 100000
     while not done:
         # action = None
         action = ddpg.choose_action(s)
-        print("before: ", action)
+        # print("before: ", action)
         if action[0] == 0. and action[1] == 0. and action[2] == 0.:
             exit(0)
         # if np.all(action == 30.):
@@ -863,7 +863,7 @@ for ep in range(episode_num):  # 100000
         # time.sleep(0.5)
         if ddpg.pointer > c*MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
-            print("LEARN!!!")
+            # print("LEARN!!!")
             ddpg.learn()
         s = s_
         R += r
