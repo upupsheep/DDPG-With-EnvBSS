@@ -42,7 +42,7 @@ mu = 0.0
 def clipping(action_mtx):
     # print("\n--- In clipping activation function ---")
     # print("a_bound: ", a_bound)
-    # print("clipping action mtx: ", action_mtx)
+    print("clipping action mtx: ", action_mtx)
     # print("x: ", type(action_mtx))
     # if type(action_mtx) is tuple:
     #     # [[xx, xx, xx, xx]], and scaled_a here
@@ -141,7 +141,7 @@ def d_clipping(action_mtx):
             grad[i][i] = (a_bound[i]-lower[i]) / (x[max_i] - x[min_i] + 1e-6)
 
         clipping_gradient_result += grad
-    # print('clipping_gradient: ', clipping_gradient_result / batch_num)
+    print('clipping_gradient: ', clipping_gradient_result / batch_num)
     # print("------------------\n")
     return clipping_gradient_result / batch_num
 
@@ -415,7 +415,7 @@ def d_optLayer(y_mtx):
     #     if np.sum(y) == env.nbikes:
     #         assert z == y
         opt_gradient_result += grad_z
-    # print("opt_gradient: ", opt_gradient_result / batch_num)
+    print("opt_gradient: ", opt_gradient_result / batch_num)
     # print("------------------\n")
     return opt_gradient_result / batch_num
 
@@ -604,9 +604,9 @@ class DDPG(object):
         br = bt[:, -self.s_dim - 1: -self.s_dim]
         bs_ = bt[:, -self.s_dim:]
 
-        # a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
+        a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
         # a, g = self.sess.run(self.atrain, {self.S: bs})
-        '''
+        # '''
         # one more layer 9, 2 >> 11, 2  but add(a_loss, self.ae_params) become 4, 2
         print("=== g ===")
         print(np.array(g).shape)
@@ -628,14 +628,13 @@ class DDPG(object):
         print("QQQQQQ")
         print(g[5][0].shape)
         print(g[5][1].shape)
-        print("-------")
-        print(g[6][0])
-        print("-------")
-        print(g[8][0])
-        print(g.gg)  # to terminal
-        '''
+        print("QQQQ")
+        print(g[4][0])
+        print(g[4][1])
+        # print(g.gg)  # to terminal
+        # '''
         # print("bs: ", bs)
-        self.sess.run(self.atrain, {self.S: bs})
+        # self.sess.run(self.atrain, {self.S: bs})
 
         self.sess.run(self.ctrain, {self.S: bs,
                                     self.a: ba, self.R: br, self.S_: bs_})
@@ -834,8 +833,8 @@ for ep in range(episode_num):  # 100000
         # action = None
         action = ddpg.choose_action(s)
         # print("before: ", action)
-        if action[0] == 0. and action[1] == 0. and action[2] == 0.:
-            exit(0)
+        # if action[0] == 0. and action[1] == 0. and action[2] == 0.:
+        #     exit(0)
         # if np.all(action == 30.):
         #     exit(0)
         # print("sum of action: ", sum(action))
