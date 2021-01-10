@@ -42,7 +42,7 @@ mu = 0.0
 def clipping(action_mtx):
     # print("\n--- In clipping activation function ---")
     # print("a_bound: ", a_bound)
-    print("clipping action mtx: ", action_mtx)
+    # print("clipping action mtx: ", action_mtx)
     # print("x: ", type(action_mtx))
     # if type(action_mtx) is tuple:
     #     # [[xx, xx, xx, xx]], and scaled_a here
@@ -141,7 +141,7 @@ def d_clipping(action_mtx):
             grad[i][i] = (a_bound[i]-lower[i]) / (x[max_i] - x[min_i] + 1e-6)
 
         clipping_gradient_result += grad
-    print('clipping_gradient: ', clipping_gradient_result / batch_num)
+    # print('clipping_gradient: ', clipping_gradient_result / batch_num)
     # print("------------------\n")
     return clipping_gradient_result / batch_num
 
@@ -415,7 +415,7 @@ def d_optLayer(y_mtx):
     #     if np.sum(y) == env.nbikes:
     #         assert z == y
         opt_gradient_result += grad_z
-    print("opt_gradient: ", opt_gradient_result / batch_num)
+    # print("opt_gradient: ", opt_gradient_result / batch_num)
     # print("------------------\n")
     return opt_gradient_result / batch_num
 
@@ -606,7 +606,7 @@ class DDPG(object):
 
         a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
         # a, g = self.sess.run(self.atrain, {self.S: bs})
-        # '''
+        '''
         # one more layer 9, 2 >> 11, 2  but add(a_loss, self.ae_params) become 4, 2
         print("=== g ===")
         print(np.array(g).shape)
@@ -631,8 +631,8 @@ class DDPG(object):
         print("QQQQ")
         print(g[4][0])
         print(g[4][1])
-        # print(g.gg)  # to terminal
-        # '''
+        print(g.gg)  # to terminal
+        '''
         # print("bs: ", bs)
         # self.sess.run(self.atrain, {self.S: bs})
 
@@ -649,21 +649,22 @@ class DDPG(object):
 
     def _build_a(self, s, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
+            # tf.random_normal_initializer(mean=0, stddev=1)
             net_1 = tf.compat.v1.layers.dense(
-                s, 32, activation=tf.nn.relu, name='l1', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1),  trainable=trainable)
+                s, 32, activation=tf.nn.relu, name='l1', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3),  trainable=trainable)
             net_2 = tf.compat.v1.layers.dense(
-                net_1, 16, activation=tf.nn.relu, name='l2', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1), trainable=trainable)
+                net_1, 16, activation=tf.nn.relu, name='l2', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3), trainable=trainable)
             a = tf.compat.v1.layers.dense(
-                net_2, self.a_dim, activation=tf.nn.tanh, name='a', kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1), trainable=trainable)
+                net_2, self.a_dim, activation=tf.nn.tanh, name='a', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3), trainable=trainable)
             '''
             scaled_a = tf.multiply(a, self.a_bound, name='scaled_a')
             print('scaled_a: ', scaled_a)
             '''
             # customized activation function (clipping)
             a_clip = tf_clipping(a)
+            a_opt = tf_optLayer(a_clip)
             # a_clip = tf.compat.v1.layers.dense(a, self.a_dim, activation=tf_clipping, name='a_clip',
             #                                    kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1), trainable=trainable)
-            a_opt = tf_optLayer(a_clip)
             # a_opt = tf.compat.v1.layers.dense(a_clip, self.a_dim, activation=tf_optLayer, name='a_opt',
             #                                   kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1), trainable=trainable)
             return a_opt
