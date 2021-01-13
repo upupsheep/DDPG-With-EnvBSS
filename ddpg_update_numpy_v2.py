@@ -533,15 +533,18 @@ class DDPG(object):
         self.ctrain = tf.compat.v1.train.AdamOptimizer(
             LR_C).minimize(td_error, var_list=self.ce_params)
 
-        optimizer = tf.compat.v1.train.GradientDescentOptimizer(LR_A)
+        optimizer = tf.compat.v1.train.AdamOptimizer(LR_A)
         a_loss = - tf.reduce_mean(input_tensor=(q - LAMBDA * self.mu))    # maximize the q
         self.grads_and_vars = list(optimizer.compute_gradients(
             a_loss, self.ae_params))
 
-        penalty_optimizer = tf.compat.v1.train.GradientDescentOptimizer(LR_A)
+        '''
+        penalty_optimizer = tf.compat.v1.train.AdamOptimizer(LR_A)
         penalty_loss = - tf.reduce_mean(input_tensor=(self.mu))    # maximize the q
         self.penalty_grads_and_vars = list(penalty_optimizer.compute_gradients(
             penalty_loss, self.ae_params))
+        '''
+        self.penalty_grad = tf.gradients(self.mu, self.ae_params)
         # print("grad[2]: ", self.grads_and_vars[2][0])
         # self.grads_and_vars = [((grad @ opt_grad), var)
         #                        for grad, var in self.grads_and_vars_noOpt]
@@ -581,8 +584,10 @@ class DDPG(object):
         self.atrain = tf.compat.v1.train.AdamOptimizer(
             LR_A).minimize(a_loss, var_list=self.ae_params)
 
+        '''
         self.penalty_train = tf.compat.v1.train.AdamOptimizer(
             LR_A).minimize(penalty_loss, var_list=self.ae_params)
+        '''
 
         self.sess.run(tf.compat.v1.global_variables_initializer())
 
@@ -679,6 +684,8 @@ class DDPG(object):
         print(g[4][1])
         print(g.gg)  # to terminal
         '''
+        # print("============")
+        # print(g[4][0])
         # print("bs: ", bs)
         # self.sess.run(self.atrain, {self.S: bs})
         self.sess.run(self.ctrain, {self.S: bs,
@@ -727,10 +734,10 @@ class DDPG(object):
                 'b1', [1, n_l1], trainable=trainable)
 
             # penalty term
-            mu_vector = tf.fill([1, n_l1], mu)
-            penalty_term = tf.compat.v1.get_variable(
-                name='penalty_term', initializer=mu_vector, trainable=trainable)
-            print("penalty_term: ", penalty_term.trainable)
+            # mu_vector = tf.fill([1, n_l1], mu)
+            # penalty_term = tf.compat.v1.get_variable(
+            #     name='penalty_term', initializer=mu_vector, trainable=trainable)
+            # print("penalty_term: ", penalty_term.trainable)
             # exit(0)
 
             net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
@@ -748,10 +755,16 @@ class DDPG(object):
 
     def get_penalty_term(self, a):
         # abs(1 - sum(a)) + abs(nbikes - sum(a))
-        lhs = tf.math.abs(1 - tf.reduce_mean(a))
-        rhs = tf.math.abs(env.nbikes - tf.reduce_mean(a))
+        lhs = tf.math.abs(1 - tf.reduce_mean(a, axis=1))
+        rhs = tf.math.abs(env.nbikes - tf.reduce_mean(a, axis=1))
         # print('AAAAAA: ', lhs+rhs)
         self.mu = lhs+rhs
+
+    def print_penalty_term(self, s):
+        return self.sess.run(self.mu, {self.S: s[np.newaxis, :]})
+
+    def print_penalty_grad(self, s):
+        return self.sess.run(self.penalty_grad, {self.S: s[np.newaxis, :]})
 
 
 ################ Opt layer#####################
@@ -889,6 +902,13 @@ for ep in range(episode_num):  # 100000
         # action = None
         action = ddpg.choose_action(s)
         # print("before: ", action)
+
+        # print('penalty_term: ', ddpg.print_penalty_term(s))
+        print("===============")
+        penalty_grad = ddpg.print_penalty_grad(s)
+        print('penalty_grad shape: ', np.array(penalty_grad).shape)
+        print('penalty_grad: ', penalty_grad[4])
+        
         # if action[0] == 0. and action[1] == 0. and action[2] == 0.:
         #     exit(0)
         # if np.all(action == 30.):
