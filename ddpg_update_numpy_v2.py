@@ -496,10 +496,11 @@ class DDPG(object):
         self.S = tf.compat.v1.placeholder(tf.float32, [None, s_dim], 's')
         self.S_ = tf.compat.v1.placeholder(tf.float32, [None, s_dim], 's_')
         self.R = tf.compat.v1.placeholder(tf.float32, [None, 1], 'r')
+        self.mu = tf.compat.v1.placeholder(tf.float32, [None, s_dim], 'mu')
 
         with tf.compat.v1.variable_scope('Actor'):
-            self.a = self._build_a(self.S, scope='eval', trainable=True)
-            a_ = self._build_a(self.S_, scope='target', trainable=False)
+            self.a, self.net_output = self._build_a(self.S, scope='eval', trainable=True)
+            a_, self.net_output_ = self._build_a(self.S_, scope='target', trainable=False)
         with tf.compat.v1.variable_scope('Critic'):
             # assign self.a = a in memory when calculating q for td_error,
             # otherwise the self.a is from Actor when updating Actor
@@ -516,6 +517,9 @@ class DDPG(object):
         self.ct_params = tf.compat.v1.get_collection(
             tf.compat.v1.GraphKeys.GLOBAL_VARIABLES, scope='Critic/target')
 
+        # Calculate penalty term
+        self.get_penalty_term(self.net_output)
+
         # target net replacement
         self.soft_replace = [tf.compat.v1.assign(t, (1 - TAU) * t + TAU * e)
                              for t, e in zip(self.at_params + self.ct_params, self.ae_params + self.ce_params)]
@@ -530,9 +534,14 @@ class DDPG(object):
             LR_C).minimize(td_error, var_list=self.ce_params)
 
         optimizer = tf.compat.v1.train.GradientDescentOptimizer(LR_A)
-        a_loss = - tf.reduce_mean(input_tensor=q)    # maximize the q
+        a_loss = - tf.reduce_mean(input_tensor=(q - LAMBDA * self.mu))    # maximize the q
         self.grads_and_vars = list(optimizer.compute_gradients(
             a_loss, self.ae_params))
+
+        penalty_optimizer = tf.compat.v1.train.GradientDescentOptimizer(LR_A)
+        penalty_loss = - tf.reduce_mean(input_tensor=(self.mu))    # maximize the q
+        self.penalty_grads_and_vars = list(penalty_optimizer.compute_gradients(
+            penalty_loss, self.ae_params))
         # print("grad[2]: ", self.grads_and_vars[2][0])
         # self.grads_and_vars = [((grad @ opt_grad), var)
         #                        for grad, var in self.grads_and_vars_noOpt]
@@ -571,6 +580,9 @@ class DDPG(object):
         # print("self.ae_params: ", self.ae_params)
         self.atrain = tf.compat.v1.train.AdamOptimizer(
             LR_A).minimize(a_loss, var_list=self.ae_params)
+
+        self.penalty_train = tf.compat.v1.train.AdamOptimizer(
+            LR_A).minimize(penalty_loss, var_list=self.ae_params)
 
         self.sess.run(tf.compat.v1.global_variables_initializer())
 
@@ -630,7 +642,15 @@ class DDPG(object):
         br = bt[:, -self.s_dim - 1: -self.s_dim]
         bs_ = bt[:, -self.s_dim:]
 
+        '''
+        a_pnt, g_pnt = self.sess.run([self.penalty_train, self.penalty_grads_and_vars], feed_dict={self.S: bs})
+        print(np.array(g_pnt).shape)
+        print(g_pnt[4][0])
+        # print(g_pnt.gg)
+
+        '''
         a, g = self.sess.run([self.atrain, self.grads_and_vars], {self.S: bs})
+
         # a, g = self.sess.run(self.atrain, {self.S: bs})
         '''
         # one more layer 9, 2 >> 11, 2  but add(a_loss, self.ae_params) become 4, 2
@@ -661,7 +681,6 @@ class DDPG(object):
         '''
         # print("bs: ", bs)
         # self.sess.run(self.atrain, {self.S: bs})
-
         self.sess.run(self.ctrain, {self.S: bs,
                                     self.a: ba, self.R: br, self.S_: bs_})
         # print(g.gg)
@@ -694,7 +713,7 @@ class DDPG(object):
             # a_opt = tf.compat.v1.layers.dense(a_clip, self.a_dim, activation=tf_optLayer, name='a_opt',
             #                                   kernel_initializer=tf.random_normal_initializer(mean=0, stddev=1), trainable=trainable)
 
-            return a_opt
+            return a_opt, a
 
     def _build_c(self, s, a, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
@@ -716,7 +735,7 @@ class DDPG(object):
 
             net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
                                    tf.reshape(
-                tf.matmul([a], w1_a), [-1, 32]) + b1 - penalty_term)  # (1, None, 30) -> (None, 30)
+                tf.matmul([a], w1_a), [-1, 32]) + b1)  # (1, None, 30) -> (None, 30)
             # + tf.multiply(float(LAMBDA), xxyy)
             # Q(s,a)
             net_1 = tf.compat.v1.layers.dense(
@@ -726,6 +745,14 @@ class DDPG(object):
             net_2 = tf.compat.v1.layers.dense(
                 net_1, 1, activation=tf.nn.relu, name='l2_c', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3), trainable=trainable)
             return net_2
+
+    def get_penalty_term(self, a):
+        # abs(1 - sum(a)) + abs(nbikes - sum(a))
+        lhs = tf.math.abs(1 - tf.reduce_mean(a))
+        rhs = tf.math.abs(env.nbikes - tf.reduce_mean(a))
+        # print('AAAAAA: ', lhs+rhs)
+        self.mu = lhs+rhs
+
 
 ################ Opt layer#####################
 
