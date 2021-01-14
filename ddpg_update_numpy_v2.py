@@ -491,10 +491,10 @@ class DDPG(object):
             (MEMORY_CAPACITY, s_dim * 2 + a_dim + 1), dtype=np.float32)
         self.pointer = 0
 
-        # configuration = tf.compat.v1.ConfigProto
-        # configuration.gpu_options.allow_growth = True
-        # self.sess = tf.compat.v1.Session(config=configuration)
-        self.sess = tf.compat.v1.Session()
+        configuration = tf.compat.v1.ConfigProto()
+        configuration.gpu_options.allow_growth = True
+        self.sess = tf.compat.v1.Session(config=configuration)
+        # self.sess = tf.compat.v1.Session()
 
         self.a_dim, self.s_dim, self.a_bound = a_dim, s_dim, a_bound,
         self.S = tf.compat.v1.placeholder(tf.float32, [None, s_dim], 's')
