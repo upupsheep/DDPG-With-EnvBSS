@@ -490,6 +490,10 @@ class DDPG(object):
         self.memory = np.zeros(
             (MEMORY_CAPACITY, s_dim * 2 + a_dim + 1), dtype=np.float32)
         self.pointer = 0
+
+        # configuration = tf.compat.v1.ConfigProto
+        # configuration.gpu_options.allow_growth = True
+        # self.sess = tf.compat.v1.Session(config=configuration)
         self.sess = tf.compat.v1.Session()
 
         self.a_dim, self.s_dim, self.a_bound = a_dim, s_dim, a_bound,
@@ -592,10 +596,12 @@ class DDPG(object):
         self.sess.run(tf.compat.v1.global_variables_initializer())
 
     def noisy_vars(self, noise_std=1):
+        print('GET NOISY VAR!!!')
         # sess = tf.get_default_session()
-        # var_names = tf.global_variables()
-        var_names = tf.compat.v1.trainable_variables()
+        var_names = tf.global_variables()
+        # var_names = tf.compat.v1.trainable_variables()
         old_var = self.sess.run(var_names)
+        # print('old_var: ', old_var)
         var_shapes = [i.shape for i in old_var]
         new_var = [i+np.random.normal(0, noise_std, size=j)
                    for i, j in zip(old_var, var_shapes)]
@@ -613,7 +619,8 @@ class DDPG(object):
         return
 
     def get_old_var(self):
-        var_names = tf.compat.v1.trainable_variables()
+        var_names = tf.global_variables()
+        # var_names = tf.compat.v1.trainable_variables()
         old_var = self.sess.run(var_names)
         return var_names, old_var
 
@@ -685,7 +692,7 @@ class DDPG(object):
         print(g.gg)  # to terminal
         '''
         # print("============")
-        # print(g[4][0])
+        # print('a_loss gradient: ', g[4][0])
         # print("bs: ", bs)
         # self.sess.run(self.atrain, {self.S: bs})
         self.sess.run(self.ctrain, {self.S: bs,
@@ -904,10 +911,7 @@ for ep in range(episode_num):  # 100000
         # print("before: ", action)
 
         # print('penalty_term: ', ddpg.print_penalty_term(s))
-        print("===============")
-        penalty_grad = ddpg.print_penalty_grad(s)
-        print('penalty_grad shape: ', np.array(penalty_grad).shape)
-        print('penalty_grad: ', penalty_grad[4])
+        
         
         # if action[0] == 0. and action[1] == 0. and action[2] == 0.:
         #     exit(0)
@@ -930,8 +934,10 @@ for ep in range(episode_num):  # 100000
         # print(obs)
         # action = get_supriyo_policy_action(env, obs, policy)
 
-        # var_names, old_var = ddpg.get_old_var()
-        # ddpg.noisy_vars()
+        var_names, old_var = ddpg.get_old_var()
+        print("==============")
+        print("{}, {}".format(ddpg.pointer, done))
+        ddpg.noisy_vars()
 
         # action = None
         s_, r, done, info = env.step(action)
@@ -939,7 +945,7 @@ for ep in range(episode_num):  # 100000
         # print("{}, {}".format(ddpg.pointer, done))
         ddpg.store_transition(s, action, r, s_)
 
-        # ddpg.reset_vars(var_names, old_var)
+        ddpg.reset_vars(var_names, old_var)
 
         if ddpg.pointer > c*MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
@@ -951,6 +957,11 @@ for ep in range(episode_num):  # 100000
         ld_dropoff += info["lost_demand_dropoff"]
         revenue += info["revenue"]
         scenario = info["scenario"]
+
+    # print("===============")
+    # penalty_grad = ddpg.print_penalty_grad(s)
+    # print('penalty_grad shape: ', np.array(penalty_grad).shape)
+    # print('penalty_grad: ', penalty_grad[4])
 
     # update EWMA reward and log the results
     ewma_reward = 0.05 * R + (1 - 0.05) * ewma_reward
