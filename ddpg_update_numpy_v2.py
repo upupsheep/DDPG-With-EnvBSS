@@ -53,7 +53,8 @@ def clipping(action_mtx):
     clipping_result = np.zeros(action_mtx.shape)
     batch_num = action_mtx.shape[0]
     for batch_idx in range(batch_num):
-        action = action_mtx[batch_idx] * a_bound
+        # action = action_mtx[batch_idx] * a_bound
+        action = action_mtx[batch_idx]
         # print("action mtx: ", action_mtx)
         # print("clipping action: ", action)
         # adjust to y
@@ -598,7 +599,7 @@ class DDPG(object):
     def noisy_vars(self, noise_std=1):
         print('GET NOISY VAR!!!')
         # sess = tf.get_default_session()
-        var_names = tf.global_variables()
+        var_names = tf.compat.v1.global_variables()
         # var_names = tf.compat.v1.trainable_variables()
         old_var = self.sess.run(var_names)
         # print('old_var: ', old_var)
@@ -619,7 +620,7 @@ class DDPG(object):
         return
 
     def get_old_var(self):
-        var_names = tf.global_variables()
+        var_names = tf.compat.v1.global_variables()
         # var_names = tf.compat.v1.trainable_variables()
         old_var = self.sess.run(var_names)
         return var_names, old_var
@@ -714,7 +715,7 @@ class DDPG(object):
             net_2 = tf.compat.v1.layers.dense(
                 net_1, 16, activation=tf.nn.relu, name='l2', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3), trainable=trainable)
             a = tf.compat.v1.layers.dense(
-                net_2, self.a_dim, activation=tf.nn.tanh, name='a', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3), trainable=trainable)
+                net_2, self.a_dim, activation=tf.nn.relu, name='a', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3), trainable=trainable)
             '''
             scaled_a = tf.multiply(a, self.a_bound, name='scaled_a')
             print('scaled_a: ', scaled_a)
@@ -934,10 +935,10 @@ for ep in range(episode_num):  # 100000
         # print(obs)
         # action = get_supriyo_policy_action(env, obs, policy)
 
-        var_names, old_var = ddpg.get_old_var()
-        print("==============")
-        print("{}, {}".format(ddpg.pointer, done))
-        ddpg.noisy_vars()
+        # var_names, old_var = ddpg.get_old_var()
+        # print("==============")
+        # print("{}, {}".format(ddpg.pointer, done))
+        # ddpg.noisy_vars()
 
         # action = None
         s_, r, done, info = env.step(action)
@@ -945,7 +946,7 @@ for ep in range(episode_num):  # 100000
         # print("{}, {}".format(ddpg.pointer, done))
         ddpg.store_transition(s, action, r, s_)
 
-        ddpg.reset_vars(var_names, old_var)
+        # ddpg.reset_vars(var_names, old_var)
 
         if ddpg.pointer > c*MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
