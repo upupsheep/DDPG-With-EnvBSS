@@ -31,6 +31,9 @@ BATCH_SIZE = 64  # 128
 episode_num = 5000  # 10000
 LAMBDA = 10000
 EPSILON = 0.1
+
+n_l1 = 32
+n_l2 = 16
 #####################  BSS data functions  ####################
 # penalty term
 mu = 0.0
@@ -504,8 +507,10 @@ class DDPG(object):
         self.mu = tf.compat.v1.placeholder(tf.float32, [None, s_dim], 'mu')
 
         with tf.compat.v1.variable_scope('Actor'):
-            self.a, self.net_output = self._build_a(self.S, scope='eval', trainable=True)
-            a_, self.net_output_ = self._build_a(self.S_, scope='target', trainable=False)
+            self.a, self.net_output = self._build_a(
+                self.S, scope='eval', trainable=True)
+            a_, self.net_output_ = self._build_a(
+                self.S_, scope='target', trainable=False)
         with tf.compat.v1.variable_scope('Critic'):
             # assign self.a = a in memory when calculating q for td_error,
             # otherwise the self.a is from Actor when updating Actor
@@ -539,7 +544,10 @@ class DDPG(object):
             LR_C).minimize(td_error, var_list=self.ce_params)
 
         optimizer = tf.compat.v1.train.AdamOptimizer(LR_A)
-        a_loss = - tf.reduce_mean(input_tensor=(q - LAMBDA * self.mu))    # maximize the q
+        # maximize the q
+        # a_loss = - tf.reduce_mean(input_tensor=(q))
+        a_loss = - tf.reduce_mean(input_tensor=(q - LAMBDA * self.mu))
+        # a_loss = - tf.reduce_mean(input_tensor=(LAMBDA * self.mu))
         self.grads_and_vars = list(optimizer.compute_gradients(
             a_loss, self.ae_params))
 
@@ -692,12 +700,19 @@ class DDPG(object):
         print(g[4][1])
         print(g.gg)  # to terminal
         '''
-        # print("============")
-        # print('a_loss gradient: ', g[4][0])
+        print("============")
+        print('a_loss gradient: ', g[4][0])
         # print("bs: ", bs)
         # self.sess.run(self.atrain, {self.S: bs})
         self.sess.run(self.ctrain, {self.S: bs,
                                     self.a: ba, self.R: br, self.S_: bs_})
+
+        # vars = tf.compat.v1.trainable_variables()
+        # # print(vars)  # some infos about variables...
+        # vars_vals = self.sess.run(vars)
+        # for var, val in zip(vars, vars_vals):
+        #     if var.name == 'Actor/eval/a/kernel:0':
+        #         print("var: {}, value: {}".format(var.name, val))
         # print(g.gg)
 
     def store_transition(self, s, a, r, s_):
@@ -711,9 +726,9 @@ class DDPG(object):
         with tf.compat.v1.variable_scope(scope):
             # tf.random_normal_initializer(mean=0, stddev=1)
             net_1 = tf.compat.v1.layers.dense(
-                s, 32, activation=tf.nn.relu, name='l1', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3),  trainable=trainable)
+                s, n_l1, activation=tf.nn.relu, name='l1', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3),  trainable=trainable)
             net_2 = tf.compat.v1.layers.dense(
-                net_1, 16, activation=tf.nn.relu, name='l2', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3), trainable=trainable)
+                net_1, n_l2, activation=tf.nn.relu, name='l2', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3), trainable=trainable)
             a = tf.compat.v1.layers.dense(
                 net_2, self.a_dim, activation=tf.nn.relu, name='a', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3), trainable=trainable)
             '''
@@ -733,7 +748,7 @@ class DDPG(object):
     def _build_c(self, s, a, scope, trainable):
         with tf.compat.v1.variable_scope(scope):
             # Q(s, a)
-            n_l1 = 32
+            # n_l1 = 32
             w1_s = tf.compat.v1.get_variable(
                 'w1_s', [self.s_dim, n_l1], trainable=trainable)
             w1_a = tf.compat.v1.get_variable(
@@ -750,11 +765,11 @@ class DDPG(object):
 
             net_1_act = tf.nn.relu(tf.matmul(s, w1_s) +
                                    tf.reshape(
-                tf.matmul([a], w1_a), [-1, 32]) + b1)  # (1, None, 30) -> (None, 30)
+                tf.matmul([a], w1_a), [-1, n_l1]) + b1)  # (1, None, 30) -> (None, 30)
             # + tf.multiply(float(LAMBDA), xxyy)
             # Q(s,a)
             net_1 = tf.compat.v1.layers.dense(
-                net_1_act, 16, name='l1_c', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3), trainable=trainable)
+                net_1_act, n_l2, name='l1_c', kernel_initializer=tf.random_uniform_initializer(minval=-3e-3, maxval=3e-3), trainable=trainable)
             # net_1 = tf.nn.relu(tf.matmul(s, w1_s) + tf.matmul(a, w1_a) + b1)
 
             net_2 = tf.compat.v1.layers.dense(
@@ -767,6 +782,9 @@ class DDPG(object):
         rhs = tf.math.abs(env.nbikes - tf.reduce_mean(a, axis=1))
         # print('AAAAAA: ', lhs+rhs)
         self.mu = lhs+rhs
+        # print(a)
+        # print(self.mu)
+        # exit(0)
 
     def print_penalty_term(self, s):
         return self.sess.run(self.mu, {self.S: s[np.newaxis, :]})
@@ -912,8 +930,7 @@ for ep in range(episode_num):  # 100000
         # print("before: ", action)
 
         # print('penalty_term: ', ddpg.print_penalty_term(s))
-        
-        
+
         # if action[0] == 0. and action[1] == 0. and action[2] == 0.:
         #     exit(0)
         # if np.all(action == 30.):
@@ -959,10 +976,10 @@ for ep in range(episode_num):  # 100000
         revenue += info["revenue"]
         scenario = info["scenario"]
 
-    # print("===============")
-    # penalty_grad = ddpg.print_penalty_grad(s)
-    # print('penalty_grad shape: ', np.array(penalty_grad).shape)
-    # print('penalty_grad: ', penalty_grad[4])
+    print("===============")
+    penalty_grad = ddpg.print_penalty_grad(s)
+    print('penalty_grad shape: ', np.array(penalty_grad).shape)
+    print('penalty_grad: ', penalty_grad[4])
 
     # update EWMA reward and log the results
     ewma_reward = 0.05 * R + (1 - 0.05) * ewma_reward
