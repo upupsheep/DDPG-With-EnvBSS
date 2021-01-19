@@ -8,10 +8,13 @@ import tensorflow as tf
 from tensorflow.keras import layers
 import numpy as np
 import matplotlib.pyplot as plt
+from cvxpylayers.tensorflow import CvxpyLayer
+import cvxpy as cp
 import gym_BSS  # noqa: F401
 
 tf.compat.v1.enable_eager_execution()
 print(tf.executing_eagerly())
+# tf.config.run_functions_eagerly(True)
 
 # problem = "Pendulum-v0"
 problem = sys.argv[1] if len(sys.argv) > 1 else 'BSSEnvTest-v0'
@@ -23,6 +26,7 @@ num_actions = env.action_space.shape[0]
 print("Size of Action Space ->  {}".format(num_actions))
 
 upper_bound = env.action_space.high
+lower_bound = np.zeros(num_actions)
 # lower_bound = env.action_space.low[0]
 
 print("Max Value of Action ->  {}".format(upper_bound))
@@ -106,6 +110,47 @@ def clipping(action):
     return y
 
 
+class OptLayer(layers.Layer):
+    def __init__(self, input_dim, output_dim):
+        super(OptLayer, self).__init__()
+        self.W = tf.Variable(1e-3 * tf.random.normal((output_dim, input_dim), dtype=tf.float32))
+        self.b = tf.Variable(1e-3 * tf.random.normal((output_dim,),  dtype=tf.float32))
+        
+        # u = tf.fill(input_dim, 35.) # 35.
+        u = tf.convert_to_tensor(upper_bound)
+
+        y = cp.Variable(output_dim)
+        Wtilde = cp.Variable((output_dim, input_dim))
+        W = cp.Parameter((output_dim, input_dim))
+        b = cp.Parameter(output_dim)
+        x = cp.Parameter(input_dim)
+        obj = cp.Minimize(cp.sum_squares(Wtilde @ x - b - y))
+        cons = [cp.sum(y) == 90., 0 <= y, y <= u, Wtilde == W]
+        problem = cp.Problem(obj, cons)
+        self.cvxpy_layer = CvxpyLayer(problem, [W, b, x], [y])
+
+    def call(self, x):
+        print('x: ', x)
+        def set_weight(x):
+            return self.W
+        
+        def set_bias(x):
+            return self.b
+
+        if tf.rank(x) == 2:
+            # when x is batched, repeat W and b
+            print('x.shape: ', tf.shape(x))
+            batch_size = x.shape[0]
+            # batch_size = tf.shape(x)[0]
+            print('batch_size: ', batch_size)
+            # return self.cvxpy_layer(tf.stack([self.W for _ in tf.range(64)]), tf.stack([self.b for _ in tf.range(64)]), x)[0]
+            tf.compat.v1.enable_eager_execution()
+            print(tf.executing_eagerly())
+            return self.cvxpy_layer(tf.map_fn(fn=lambda inp: set_weight(inp), elems=x), tf.map_fn(fn=lambda inp: set_bias(inp), elems=x), x)[0]
+        else:
+            return self.cvxpy_layer(self.W, self.b, x)[0]
+
+
 class Buffer:
     def __init__(self, buffer_capacity=100000, batch_size=64):
         # Number of "experiences" to store at max
@@ -139,7 +184,7 @@ class Buffer:
     # Eager execution is turned on by default in TensorFlow 2. Decorating with tf.function allows
     # TensorFlow to build a static graph out of the logic and computations in our function.
     # This provides a large speed up for blocks of code that contain many small TensorFlow operations such as this one.
-    @tf.function
+    # @tf.function
     def update(
         self, state_batch, action_batch, reward_batch, next_state_batch,
     ):
@@ -153,6 +198,7 @@ class Buffer:
             critic_value = critic_model(
                 [state_batch, action_batch], training=True)
             critic_loss = tf.math.reduce_mean(tf.math.square(y - critic_value))
+            print('critic_loss: ', critic_loss)
 
         critic_grad = tape.gradient(
             critic_loss, critic_model.trainable_variables)
@@ -191,138 +237,10 @@ class Buffer:
 
 
 ###############################  DDPG  ####################################
-@tf.custom_gradient
-def OptLayer_op(y):
-    # print("y: ", y.get_shape())
-    # y = y.numpy()
-    # z = tf.zeros(num_actions)
-    lower = np.zeros(num_actions)
-    lower = tf.convert_to_tensor(lower, dtype=tf.float32)
-    tf_upper_bound = tf.convert_to_tensor(upper_bound, dtype=tf.float32)
-
-    z = [tf.Variable(0, dtype=tf.float32) for i in range(num_actions)]
-
-    ### start algorithm ###
-    phase = 0  # lower=0, upper=1, done=2
-    C_unclamp = env.nbikes  # how many left bike to distribute
-    set_unclamp = set(range(num_actions))  # unclamp set
-    unclamp_num = num_actions  # unclamp number=n'
-    # grad_z = tf.zeros((num_actions, num_actions))   # grad_z is 4*4 arrray
-    grad_z = np.zeros((num_actions, num_actions))
-
-    while phase != 2:
-        sum_y = tf.Variable(0, dtype=tf.float32)
-        set_clamp_round = set()  # indices clamped in this iteration of the while loop
-        # algorithm line 7
-        for i in range(num_actions):
-            if i in set_unclamp:
-                # sum_y = sum_y+y[i]
-                # print(y[0][i])
-                y_i = tf.gather(y[0], i)
-                # print("y[i]: ", y_i)
-                sum_y.assign_add(y_i)
-        for i in range(num_actions):
-            if i in set_unclamp:
-                z[i] = tf.gather(y, i)+(C_unclamp-sum_y)/unclamp_num
-                z[i].set_shape(num_actions)
-        # print(z,"z")
-        # print(sum_y,"sum_y")
-        # algorithm line8
-        for i in range(num_actions):
-            if i in set_unclamp:
-                for j in range(num_actions):
-                    if j in set_unclamp:
-                        if (i != j):
-                            grad_z[i][j] = -1/unclamp_num
-                        else:
-                            grad_z[i][j] = 1 - (1/unclamp_num)
-       # print(grad_z)
-        # algorithm line 9
-        for j in range(num_actions):
-            if j not in set_unclamp:
-                for i in range(num_actions):
-                    grad_z[i][j] = 0
-      # print(grad_z,"grad before clamp in this iteration")
-
-        # algorithm lin 10~20
-        for i in range(num_actions):
-            if i in set_unclamp:
-                # if z[i] < lower[i] and phase == 0:
-                # print("z: ", z)
-                aaa = tf.Variable(1, dtype=tf.float32)
-                z_i = tf.gather(z[i], 0)
-                print("sfsafsf: ", z_i.get_shape())
-                aaa = tf.multiply(aaa, z_i)
-                print("aaa: ", aaa)
-                lower_i = tf.gather(lower, i)
-                upper_i = tf.gather(tf_upper_bound, i)
-                # print("lower_i: ", lower_i)
-                print(tf.math.less(z_i, lower_i))
-                print("where: ", tf.where(tf.math.less(z_i, lower_i)).dtype)
-                if (tf.math.less(z_i, lower_i)).numpy() and (phase == 0):
-                    # z[i] = lower[i]
-                    z[i] = lower_i
-                    for j in range(num_actions):
-                        grad_z[i][j] = 0
-                    set_clamp_round.add(i)
-                # elif (z[i] > upper_bound[i]) and phase == 1:
-                    print(tf.math.greater(z_i, upper_i))
-                elif (tf.math.greater(z_i, upper_i)).numpy() and (phase == 1):
-                    # z[i] = upper_bound[i]
-                    z[i] = upper_i
-                    for j in range(num_actions):
-                        grad_z[i][j] = 0
-                    set_clamp_round.add(i)
-       # print(z,"z_after clamp")
-       # print(grad_z,"grad after clamp")
-        # algorithm 21~25
-        unclamp_num = unclamp_num-len(set_clamp_round)
-     #   print(unclamp_num,"unclamp")
-        for i in range(num_actions):
-            if i in set_clamp_round:
-                C_unclamp = C_unclamp-z[i]
-       # print(C_unclamp,"C")
-        set_unclamp = set_unclamp.difference(set_clamp_round)
-      #  print(set_unclamp,"unclamp set")
-        if len(set_clamp_round) == 0:
-            phase = phase+1
-
-    print("z: ", z)
-    # debug after optlayer
-    '''
-    final_sum = 0
-    for i in range(num_actions):
-        z_i = z[i].numpy()
-        # final_sum = final_sum+z[i]
-        final_sum = final_sum + z_i
-        # make sure not violate the local constraint
-        # assert lower[i] <= z_i <= upper_bound[i]
-        assert tf.gather(lower, i).numpy() <= z_i <= upper_bound[i]
-    final_sum = round(final_sum, 2)
-   # print(final_sum)
-    assert final_sum == env.nbikes     # make sure sum is equal to bike number
-    # if np.sum(y) == nbikes:
-    #     assert z == y
-    '''
-    def grad(dy):
-        return grad_z
-    return tf.stack(z), grad
-
-
-class OptLayer(tf.keras.layers.Layer):
-    def __init__(self):
-        super(OptLayer, self).__init__()
-
-    def build(self, input_shape):
-        pass
-
-    def call(self, input):
-        return OptLayer_op(input)
-
 
 # This update target parameters slowly
 # Based on rate `tau`, which is much less than one.
-@tf.function
+# @tf.function
 def update_target(target_weights, weights, tau):
     for (a, b) in zip(target_weights, weights):
         a.assign(b * tau + a * (1 - tau))
@@ -343,9 +261,11 @@ def get_actor():
     # Our upper bound is 2.0 for Pendulum.
     outputs = outputs * upper_bound
 
-    opt_layer = OptLayer()
-    outputs = opt_layer(outputs)
-    model = tf.keras.Model(inputs, outputs)
+    opt_layer = OptLayer(num_actions, num_actions)
+    opt_output = opt_layer(outputs)
+
+    # model = tf.keras.Model(inputs, outputs)
+    model = tf.keras.Model(inputs, opt_output)
 
     dot_img_file = './model_plot/model_1.png'
     tf.keras.utils.plot_model(model, to_file=dot_img_file, show_shapes=True)
@@ -391,8 +311,8 @@ def policy(state, noise_object):
     sampled_actions = sampled_actions.numpy() + noise
 
     # We make sure action is within bounds
-    # legal_action = np.clip(sampled_actions, lower_bound, upper_bound)
-    legal_action = clipping(sampled_actions)
+    legal_action = np.clip(sampled_actions, lower_bound, upper_bound)
+    # legal_action = clipping(sampled_actions)
 
     # return [np.squeeze(legal_action)]
     return np.squeeze(legal_action)
