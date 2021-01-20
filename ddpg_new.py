@@ -16,6 +16,8 @@ tf.compat.v1.enable_eager_execution()
 print(tf.executing_eagerly())
 # tf.config.run_functions_eagerly(True)
 
+tf.keras.backend.set_floatx('float64')
+
 # problem = "Pendulum-v0"
 problem = sys.argv[1] if len(sys.argv) > 1 else 'BSSEnvTest-v0'
 env = gym.make(problem)
@@ -113,8 +115,8 @@ def clipping(action):
 class OptLayer(layers.Layer):
     def __init__(self, input_dim, output_dim):
         super(OptLayer, self).__init__()
-        self.W = tf.Variable(1e-3 * tf.random.normal((output_dim, input_dim), dtype=tf.float32))
-        self.b = tf.Variable(1e-3 * tf.random.normal((output_dim,),  dtype=tf.float32))
+        self.W = tf.Variable(1e-3 * tf.random.normal((output_dim, input_dim), dtype=tf.float64))
+        self.b = tf.Variable(1e-3 * tf.random.normal((output_dim,),  dtype=tf.float64))
         
         # u = tf.fill(input_dim, 35.) # 35.
         u = tf.convert_to_tensor(upper_bound)
@@ -130,7 +132,7 @@ class OptLayer(layers.Layer):
         self.cvxpy_layer = CvxpyLayer(problem, [W, b, x], [y])
 
     def call(self, x):
-        print('x: ', x)
+        # print('x: ', x)
         def set_weight(x):
             return self.W
         
@@ -139,14 +141,14 @@ class OptLayer(layers.Layer):
 
         if tf.rank(x) == 2:
             # when x is batched, repeat W and b
-            print('x.shape: ', tf.shape(x))
+            # print('x.shape: ', tf.shape(x))
             batch_size = x.shape[0]
             # batch_size = tf.shape(x)[0]
-            print('batch_size: ', batch_size)
-            # return self.cvxpy_layer(tf.stack([self.W for _ in tf.range(64)]), tf.stack([self.b for _ in tf.range(64)]), x)[0]
-            tf.compat.v1.enable_eager_execution()
-            print(tf.executing_eagerly())
-            return self.cvxpy_layer(tf.map_fn(fn=lambda inp: set_weight(inp), elems=x), tf.map_fn(fn=lambda inp: set_bias(inp), elems=x), x)[0]
+            # print('batch_size: ', batch_size)
+            return self.cvxpy_layer(tf.stack([self.W for _ in tf.range(batch_size)]), tf.stack([self.b for _ in tf.range(batch_size)]), x)[0]
+            # tf.compat.v1.enable_eager_execution()
+            # print(tf.executing_eagerly())
+            # return self.cvxpy_layer(tf.map_fn(fn=lambda inp: set_weight(inp), elems=x), tf.map_fn(fn=lambda inp: set_bias(inp), elems=x), x)[0]
         else:
             return self.cvxpy_layer(self.W, self.b, x)[0]
 
@@ -190,6 +192,7 @@ class Buffer:
     ):
         # Training and updating Actor & Critic networks.
         # See Pseudo Code.
+        # print('UPDATE!!!')
         with tf.GradientTape() as tape:
             target_actions = target_actor(next_state_batch, training=True)
             y = reward_batch + gamma * target_critic(
@@ -198,7 +201,7 @@ class Buffer:
             critic_value = critic_model(
                 [state_batch, action_batch], training=True)
             critic_loss = tf.math.reduce_mean(tf.math.square(y - critic_value))
-            print('critic_loss: ', critic_loss)
+            # print('critic_loss: ', critic_loss)
 
         critic_grad = tape.gradient(
             critic_loss, critic_model.trainable_variables)
@@ -208,6 +211,8 @@ class Buffer:
 
         with tf.GradientTape() as tape:
             actions = actor_model(state_batch, training=True)
+            opt_layer = OptLayer(num_actions, num_actions)
+            actions = opt_layer(actions)
             critic_value = critic_model([state_batch, actions], training=True)
             # Used `-value` as we want to maximize the value given
             # by the critic for our actions
@@ -229,7 +234,7 @@ class Buffer:
         state_batch = tf.convert_to_tensor(self.state_buffer[batch_indices])
         action_batch = tf.convert_to_tensor(self.action_buffer[batch_indices])
         reward_batch = tf.convert_to_tensor(self.reward_buffer[batch_indices])
-        reward_batch = tf.cast(reward_batch, dtype=tf.float32)
+        reward_batch = tf.cast(reward_batch, dtype=tf.float64)
         next_state_batch = tf.convert_to_tensor(
             self.next_state_buffer[batch_indices])
 
@@ -250,22 +255,33 @@ def get_actor():
     # Initialize weights between -3e-3 and 3-e3
     # last_init = tf.random_uniform_initializer(minval=-0.003, maxval=0.003)
 
+    # '''
     inputs = layers.Input(shape=(num_states,))
-    out = layers.Dense(400, activation="relu", dtype=tf.float32)(inputs)
-    out = layers.Dense(300, activation="relu", dtype=tf.float32)(out)
+    out = layers.Dense(400, activation="relu", dtype=tf.float64)(inputs)
+    out = layers.Dense(300, activation="relu", dtype=tf.float64)(out)
     # outputs = layers.Dense(num_actions, activation="tanh",
     #                        kernel_initializer=last_init)(out)
     outputs = layers.Dense(
-        num_actions, activation="tanh", dtype=tf.float32)(out)
+        num_actions, activation="tanh", dtype=tf.float64)(out)
 
     # Our upper bound is 2.0 for Pendulum.
     outputs = outputs * upper_bound
+    # print(outputs)
 
-    opt_layer = OptLayer(num_actions, num_actions)
-    opt_output = opt_layer(outputs)
+    # opt_output = OptLayer(num_actions, num_actions)(outputs)
+    # opt_output = opt_layer(outputs)
 
-    # model = tf.keras.Model(inputs, outputs)
-    model = tf.keras.Model(inputs, opt_output)
+    model = tf.keras.Model(inputs, outputs)
+    # model = tf.keras.Model(inputs, opt_output)
+    # '''
+    '''
+    model = tf.keras.Sequential(
+        # layers.Dense(400, activation='relu', input_shape=(num_states,), dtype=tf.float32),
+        # layers.Dense(300, activation='relu', dtype=tf.float32),
+        # layers.Dense(num_actions, activation='tanh', dtype=tf.float32),
+        OptLayer(num_actions, num_actions)
+    )
+    '''
 
     dot_img_file = './model_plot/model_1.png'
     tf.keras.utils.plot_model(model, to_file=dot_img_file, show_shapes=True)
@@ -291,8 +307,8 @@ def get_critic():
     concat = layers.Concatenate()([state_input, action_input])
     # '''
 
-    out = layers.Dense(400, activation="relu", dtype=tf.float32)(concat)
-    out = layers.Dense(300, activation="relu", dtype=tf.float32)(out)
+    out = layers.Dense(400, activation="relu", dtype=tf.float64)(concat)
+    out = layers.Dense(300, activation="relu", dtype=tf.float64)(out)
     outputs = layers.Dense(1)(out)
 
     # Outputs single value for give state-action
@@ -311,8 +327,10 @@ def policy(state, noise_object):
     sampled_actions = sampled_actions.numpy() + noise
 
     # We make sure action is within bounds
-    legal_action = np.clip(sampled_actions, lower_bound, upper_bound)
+    # legal_action = np.clip(sampled_actions, lower_bound, upper_bound)
     # legal_action = clipping(sampled_actions)
+    opt_layer = OptLayer(num_actions, num_actions)
+    legal_action = opt_layer(sampled_actions)
 
     # return [np.squeeze(legal_action)]
     return np.squeeze(legal_action)
@@ -346,7 +364,7 @@ gamma = 0.99
 # Used to update target networks
 tau = 0.005
 
-buffer = Buffer(50000, 64)
+buffer = Buffer(10000, 64)
 ################################################################
 
 # To store reward history of each episode
@@ -368,6 +386,7 @@ for ep in range(total_episodes):
         tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
 
         action = policy(tf_prev_state, ou_noise)
+        # print('action: ', action)
         # Recieve state and reward from environment.
         state, reward, done, info = env.step(action)
 
