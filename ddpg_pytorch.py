@@ -21,8 +21,8 @@ LR_A = 0.001    # learning rate for actor
 LR_C = 0.002    # learning rate for critic
 GAMMA = 0.9     # reward discount
 TAU = 0.01  # 0.01      # soft replacement
-MEMORY_CAPACITY = 10000
-c = 0.1  # 0.1
+MEMORY_CAPACITY = 100  # 10000
+c = 1  # 0.1
 BATCH_SIZE = 64  # 32
 RENDER = False
 # ENV_NAME = 'Pendulum-v0'
@@ -108,11 +108,11 @@ class OptLayer(torch.nn.Module):
 class ANet(nn.Module):   # ae(s)=a
     def __init__(self, s_dim, a_dim):
         super(ANet, self).__init__()
-        self.fc1 = nn.Linear(s_dim, 400)
+        self.fc1 = nn.Linear(s_dim, 32)
         # self.fc1.weight.data.normal_(0, 0.1)  # initialization
-        self.fc2 = nn.Linear(400, 300)
+        self.fc2 = nn.Linear(32, 32)
         # self.fc2.weight.data.normal_(0, 0.1)  # initialization
-        self.out = nn.Linear(300, a_dim)
+        self.out = nn.Linear(32, a_dim)
         # self.out.weight.data.normal_(0, 0.1)  # initialization
         self.opt_layer = OptLayer(a_dim, a_dim)
 
@@ -138,13 +138,13 @@ class ANet(nn.Module):   # ae(s)=a
 class CNet(nn.Module):   # ae(s)=a
     def __init__(self, s_dim, a_dim):
         super(CNet, self).__init__()
-        self.fcs = nn.Linear(s_dim, 400)
+        self.fcs = nn.Linear(s_dim, 32)
         # self.fcs.weight.data.normal_(0, 0.1)  # initialization
-        self.fca = nn.Linear(a_dim, 400)
+        self.fca = nn.Linear(a_dim, 32)
         # self.fca.weight.data.normal_(0, 0.1)  # initialization
-        self.fc2 = nn.Linear(400, 300)
+        self.fc2 = nn.Linear(32, 32)
         # self.fc2.weight.data.normal_(0, 0.1)  # initialization
-        self.out = nn.Linear(300, 1)
+        self.out = nn.Linear(32, 1)
         # self.out.weight.data.normal_(0, 0.1)  # initialization
 
     def forward(self, s, a):
