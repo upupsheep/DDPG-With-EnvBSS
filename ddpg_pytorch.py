@@ -32,6 +32,53 @@ ENV_NAME = 'BSSEnvTest-v0'
 ###############################  DDPG  ####################################
 
 
+class AdaptiveParamNoiseSpec(object):
+    def __init__(self, initial_stddev=0.1, desired_action_stddev=0.2, adaptation_coefficient=1.01):
+        """
+        Note that initial_stddev and current_stddev refer to std of parameter noise, 
+        but desired_action_stddev refers to (as name notes) desired std in action space
+        """
+        self.initial_stddev = initial_stddev
+        self.desired_action_stddev = desired_action_stddev
+        self.adaptation_coefficient = adaptation_coefficient
+
+        self.current_stddev = initial_stddev
+
+    def adapt(self, distance):
+        if distance > self.desired_action_stddev:
+            # Decrease stddev.
+            self.current_stddev /= self.adaptation_coefficient
+        else:
+            # Increase stddev.
+            self.current_stddev *= self.adaptation_coefficient
+
+    def get_stats(self):
+        stats = {
+            'param_noise_stddev': self.current_stddev,
+        }
+        return stats
+
+    def __repr__(self):
+        fmt = 'AdaptiveParamNoiseSpec(initial_stddev={}, desired_action_stddev={}, adaptation_coefficient={})'
+        return fmt.format(self.initial_stddev, self.desired_action_stddev, self.adaptation_coefficient)
+
+
+def ddpg_distance_metric(actions1, actions2):
+    """
+    Compute "distance" between actions taken by two policies at the same states
+    Expects numpy arrays
+    """
+    diff = actions1-actions2
+    mean_diff = np.mean(np.square(diff), axis=0)
+    dist = sqrt(np.mean(mean_diff))
+    return dist
+
+
+def hard_update(target, source):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(param.data)
+
+
 class OptLayer(torch.nn.Module):
     def __init__(self, D_in, D_out):
         super(OptLayer, self).__init__()
@@ -63,11 +110,11 @@ class ANet(nn.Module):   # ae(s)=a
     def __init__(self, s_dim, a_dim):
         super(ANet, self).__init__()
         self.fc1 = nn.Linear(s_dim, 400)
-        self.fc1.weight.data.normal_(0, 0.1)  # initialization
+        # self.fc1.weight.data.normal_(0, 0.1)  # initialization
         self.fc2 = nn.Linear(400, 300)
-        self.fc2.weight.data.normal_(0, 0.1)  # initialization
+        # self.fc2.weight.data.normal_(0, 0.1)  # initialization
         self.out = nn.Linear(300, a_dim)
-        self.out.weight.data.normal_(0, 0.1)  # initialization
+        # self.out.weight.data.normal_(0, 0.1)  # initialization
         self.opt_layer = OptLayer(a_dim, a_dim)
 
     def forward(self, x):
@@ -93,13 +140,13 @@ class CNet(nn.Module):   # ae(s)=a
     def __init__(self, s_dim, a_dim):
         super(CNet, self).__init__()
         self.fcs = nn.Linear(s_dim, 400)
-        self.fcs.weight.data.normal_(0, 0.1)  # initialization
+        # self.fcs.weight.data.normal_(0, 0.1)  # initialization
         self.fca = nn.Linear(a_dim, 400)
-        self.fca.weight.data.normal_(0, 0.1)  # initialization
+        # self.fca.weight.data.normal_(0, 0.1)  # initialization
         self.fc2 = nn.Linear(400, 300)
-        self.fc2.weight.data.normal_(0, 0.1)  # initialization
+        # self.fc2.weight.data.normal_(0, 0.1)  # initialization
         self.out = nn.Linear(300, 1)
-        self.out.weight.data.normal_(0, 0.1)  # initialization
+        # self.out.weight.data.normal_(0, 0.1)  # initialization
 
     def forward(self, s, a):
         x = self.fcs(s)
@@ -118,17 +165,27 @@ class DDPG(object):
             (MEMORY_CAPACITY, s_dim * 2 + a_dim + 1), dtype=np.float32)
         self.pointer = 0
         #self.sess = tf.Session()
-        self.Actor_eval = ANet(s_dim, a_dim)
-        self.Actor_target = ANet(s_dim, a_dim)
-        self.Critic_eval = CNet(s_dim, a_dim)
-        self.Critic_target = CNet(s_dim, a_dim)
+        self.Actor_eval = ANet(s_dim, a_dim)  # .type(torch.IntTensor)
+        self.Actor_target = ANet(s_dim, a_dim)  # .type(torch.IntTensor)
+        self.Actor_perturbed = ANet(s_dim, a_dim)  # .type(torch.IntTensor)
+
+        self.Critic_eval = CNet(s_dim, a_dim)  # .type(torch.IntTensor)
+        self.Critic_target = CNet(s_dim, a_dim)  # .type(torch.IntTensor)
         self.ctrain = torch.optim.Adam(self.Critic_eval.parameters(), lr=LR_C)
         self.atrain = torch.optim.Adam(self.Actor_eval.parameters(), lr=LR_A)
         self.loss_td = nn.MSELoss()
 
-    def choose_action(self, s):
+    def choose_action(self, s, para):
         s = torch.unsqueeze(torch.FloatTensor(s), 0)
-        return self.Actor_eval(s)[0].detach()  # ae（s）
+        # s = torch.unsqueeze(torch.IntTensor(s), 0)
+
+        # self.Actor_eval.eval()
+        # self.Actor_perturbed.eval()
+
+        if para is None:
+            return self.Actor_eval(s)[0].detach()  # ae（s）
+        else:
+            return self.Actor_perturbed(s)[0].detach()
 
     def learn(self):
 
@@ -146,33 +203,44 @@ class DDPG(object):
         record_range = min(self.pointer, MEMORY_CAPACITY)
         indices = np.random.choice(record_range, size=BATCH_SIZE)
         bt = self.memory[indices, :]
+        # '''
         bs = torch.FloatTensor(bt[:, :self.s_dim])
         ba = torch.FloatTensor(bt[:, self.s_dim: self.s_dim + self.a_dim])
         br = torch.FloatTensor(bt[:, -self.s_dim - 1: -self.s_dim])
         bs_ = torch.FloatTensor(bt[:, -self.s_dim:])
+        # '''
+        '''
+        bs = torch.IntTensor(bt[:, :self.s_dim])
+        ba = torch.IntTensor(bt[:, self.s_dim: self.s_dim + self.a_dim])
+        br = torch.IntTensor(bt[:, -self.s_dim - 1: -self.s_dim])
+        bs_ = torch.IntTensor(bt[:, -self.s_dim:])
+        '''
 
         a = self.Actor_eval(bs)
         # loss=-q=-ce（s,ae（s））更新ae   ae（s）=a   ae（s_）=a_
         q = self.Critic_eval(bs, a)
         # 如果 a是一个正确的行为的话，那么它的Q应该更贴近0
         loss_a = -torch.mean(q)
-        # print(q)
-        # print(loss_a)
+        # print('q: ', q)
+        # print('loss_a: ', loss_a)
         self.atrain.zero_grad()
         loss_a.backward()
         self.atrain.step()
+        # print('atrain grad: ', self.atrain.grad)
+        # for p in self.Actor_eval.parameters():
+        #     print(p.name, p.requires_grad, p.grad.norm())
 
         # 这个网络不及时更新参数, 用于预测 Critic 的 Q_target 中的 action
         a_ = self.Actor_target(bs_)
         # 这个网络不及时更新参数, 用于给出 Actor 更新参数时的 Gradient ascent 强度
         q_ = self.Critic_target(bs_, a_)
         q_target = br+GAMMA*q_  # q_target = 负的
-        # print(q_target)
+        # print('q_target: ', q_target)
         q_v = self.Critic_eval(bs, ba)
-        # print(q_v)
+        # print('q_v: ', q_v)
         td_error = self.loss_td(q_target, q_v)
         # td_error=R + GAMMA * ct（bs_,at(bs_)）-ce(s,ba) 更新ce ,但这个ae(s)是记忆中的ba，让ce得出的Q靠近Q_target,让评价更准确
-        # print(td_error)
+        # print('td_error: ', td_error)
         self.ctrain.zero_grad()
         td_error.backward()
         self.ctrain.step()
@@ -183,6 +251,19 @@ class DDPG(object):
         index = self.pointer % MEMORY_CAPACITY
         self.memory[index, :] = transition
         self.pointer += 1
+
+    def perturb_actor_parameters(self, param_noise):
+        """Apply parameter noise to actor model, for exploration"""
+        hard_update(self.Actor_perturbed, self.Actor_eval)
+        params = self.Actor_perturbed.state_dict()
+        for name in params:
+            if 'ln' in name:
+                pass
+            param = params[name]
+            random = torch.randn(param.shape)
+            # if use_cuda:
+            #     random = random.cuda()
+            param += random * param_noise.current_stddev
 
 
 ###############################  training  ####################################
@@ -197,6 +278,10 @@ s_dim = env.observation_space.shape[0]
 a_dim = env.action_space.shape[0]
 a_bound = env.action_space.high
 
+param_noise = AdaptiveParamNoiseSpec(
+    initial_stddev=0.05, desired_action_stddev=0.3, adaptation_coefficient=1.05)
+# param_noise = None
+
 ddpg = DDPG(a_dim, s_dim, a_bound)
 
 var = 3  # control exploration
@@ -206,13 +291,16 @@ for i in range(MAX_EPISODES):
     ep_reward = 0
     done = False
     j = 0
+    noise_counter = 0
+    if param_noise is not None:
+        ddpg.perturb_actor_parameters(param_noise)
     # for j in range(MAX_EP_STEPS):
     while not done:
         if RENDER:
             env.render()
 
         # Add exploration noise
-        a = ddpg.choose_action(s)
+        a = ddpg.choose_action(s, param_noise)
         # print('In main: ', a)
         # add randomness to action selection for exploration
         # a = np.clip(np.random.normal(a, var), -2, 2)
@@ -225,6 +313,7 @@ for i in range(MAX_EPISODES):
             # print('learn!!!!')
             ddpg.learn()
 
+        noise_counter += 1
         s = s_
         ep_reward += r
         '''
