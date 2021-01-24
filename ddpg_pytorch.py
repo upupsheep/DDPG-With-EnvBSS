@@ -20,11 +20,10 @@ MAX_EP_STEPS = 200
 LR_A = 0.001    # learning rate for actor
 LR_C = 0.002    # learning rate for critic
 GAMMA = 0.9     # reward discount
-TAU = 0.01      # soft replacement
+TAU = 0.01  # 0.01      # soft replacement
 MEMORY_CAPACITY = 10000
 c = 0.1  # 0.1
 BATCH_SIZE = 64  # 32
-TAU = 0.01
 RENDER = False
 # ENV_NAME = 'Pendulum-v0'
 ENV_NAME = 'BSSEnvTest-v0'
@@ -35,7 +34,7 @@ ENV_NAME = 'BSSEnvTest-v0'
 class AdaptiveParamNoiseSpec(object):
     def __init__(self, initial_stddev=0.1, desired_action_stddev=0.2, adaptation_coefficient=1.01):
         """
-        Note that initial_stddev and current_stddev refer to std of parameter noise, 
+        Note that initial_stddev and current_stddev refer to std of parameter noise,
         but desired_action_stddev refers to (as name notes) desired std in action space
         """
         self.initial_stddev = initial_stddev
@@ -164,7 +163,7 @@ class DDPG(object):
         self.memory = np.zeros(
             (MEMORY_CAPACITY, s_dim * 2 + a_dim + 1), dtype=np.float32)
         self.pointer = 0
-        #self.sess = tf.Session()
+        # self.sess = tf.Session()
         self.Actor_eval = ANet(s_dim, a_dim)  # .type(torch.IntTensor)
         self.Actor_target = ANet(s_dim, a_dim)  # .type(torch.IntTensor)
         self.Actor_perturbed = ANet(s_dim, a_dim)  # .type(torch.IntTensor)
@@ -287,7 +286,8 @@ ddpg = DDPG(a_dim, s_dim, a_bound)
 var = 3  # control exploration
 t1 = time.time()
 for i in range(MAX_EPISODES):
-    s = env.reset()
+    s = np.round(env.reset())
+    old_s = s
     ep_reward = 0
     done = False
     j = 0
@@ -300,8 +300,12 @@ for i in range(MAX_EPISODES):
             env.render()
 
         # Add exploration noise
-        a = ddpg.choose_action(s, param_noise)
-        # print('In main: ', a)
+        a_float = ddpg.choose_action(s, param_noise)
+        a = torch.round(a_float)
+        # print('===========In main: ===============')
+        # print('s = ', s)
+        # print('old a = ', a_float)
+        # print('a = ', a)
         # add randomness to action selection for exploration
         # a = np.clip(np.random.normal(a, var), -2, 2)
         s_, r, done, info = env.step(a)
@@ -314,6 +318,7 @@ for i in range(MAX_EPISODES):
             ddpg.learn()
 
         noise_counter += 1
+        old_s = s
         s = s_
         ep_reward += r
         '''
@@ -326,6 +331,11 @@ for i in range(MAX_EPISODES):
         j += 1
         '''
     ewma_reward = 0.05 * ep_reward + (1 - 0.05) * ewma_reward
+
+    print('===========In main: ===============')
+    print('s = ', old_s)
+    # print('old a = ', a_float)
+    print('a = ', a)
 
     print({
         'episode': i,
