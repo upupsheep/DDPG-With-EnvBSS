@@ -62,13 +62,17 @@ class OptLayer(torch.nn.Module):
 class ANet(nn.Module):   # ae(s)=a
     def __init__(self, s_dim, a_dim):
         super(ANet, self).__init__()
-        self.fc1 = nn.Linear(s_dim, 30)
+        self.fc1 = nn.Linear(s_dim, 400)
         self.fc1.weight.data.normal_(0, 0.1)  # initialization
-        self.out = nn.Linear(30, a_dim)
+        self.fc2 = nn.Linear(400, 300)
+        self.fc2.weight.data.normal_(0, 0.1)  # initialization
+        self.out = nn.Linear(300, a_dim)
         self.out.weight.data.normal_(0, 0.1)  # initialization
 
     def forward(self, x):
         x = self.fc1(x)
+        x = F.relu(x)
+        x = self.fc2(x)
         x = F.relu(x)
         x = self.out(x)
         x = F.tanh(x)
@@ -86,18 +90,22 @@ class ANet(nn.Module):   # ae(s)=a
 class CNet(nn.Module):   # ae(s)=a
     def __init__(self, s_dim, a_dim):
         super(CNet, self).__init__()
-        self.fcs = nn.Linear(s_dim, 30)
+        self.fcs = nn.Linear(s_dim, 400)
         self.fcs.weight.data.normal_(0, 0.1)  # initialization
-        self.fca = nn.Linear(a_dim, 30)
+        self.fca = nn.Linear(a_dim, 400)
         self.fca.weight.data.normal_(0, 0.1)  # initialization
-        self.out = nn.Linear(30, 1)
+        self.fc2 = nn.Linear(400, 300)
+        self.fc2.weight.data.normal_(0, 0.1)  # initialization
+        self.out = nn.Linear(300, 1)
         self.out.weight.data.normal_(0, 0.1)  # initialization
 
     def forward(self, s, a):
         x = self.fcs(s)
         y = self.fca(a)
         net = F.relu(x+y)
-        actions_value = self.out(net)
+        z = self.fc2(net)
+        z = F.relu(z)
+        actions_value = self.out(z)
         return actions_value
 
 
