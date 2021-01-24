@@ -68,6 +68,7 @@ class ANet(nn.Module):   # ae(s)=a
         self.fc2.weight.data.normal_(0, 0.1)  # initialization
         self.out = nn.Linear(300, a_dim)
         self.out.weight.data.normal_(0, 0.1)  # initialization
+        self.opt_layer = OptLayer(a_dim, a_dim)
 
     def forward(self, x):
         x = self.fc1(x)
@@ -82,7 +83,8 @@ class ANet(nn.Module):   # ae(s)=a
         # actions_value = x * a_bound
         actions_value = x * 35
         # print('actions_value: ', actions_value)
-        opt_action = OptLayer(a_dim, a_dim)(x)
+        # opt_action = OptLayer(a_dim, a_dim)(x)
+        opt_action = self.opt_layer(actions_value)
         # print('opt_action: ', opt_action)
         return opt_action
 
