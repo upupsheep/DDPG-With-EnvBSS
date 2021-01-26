@@ -99,8 +99,10 @@ class BSSEnv(gym.Env):
                     line = f2.readline()
                     line = line.strip(" \r\n")
                     line = line.split(" ")
-                   # print(line)
+                    # print(line)
                     for k in range(self.nzones):
+                        if line[k] == '':
+                            break
                         flow[i][j][k] = float(line[k])
             f2.close()
             self.demand_data[scenario] = flow
@@ -209,8 +211,8 @@ class BSSEnv(gym.Env):
             if not(hasattr(action, 'shape') and list(action.shape) == list(self.action_space.shape)):
                 raise error.InvalidAction(
                     'action shape must be as per env.action_space.shape. Provided action was {0}'.format(action))
-            # if np.round(np.sum(action)) != self.nbikes:
-            if abs(np.sum(action) - self.nbikes) > 1:
+            if np.round(np.sum(action)) != self.nbikes:
+            # if abs(np.sum(action) - self.nbikes) > 1:
                 raise error.InvalidAction(
                     'Dimensions of action must sum upto env.metadata["nbikes"]. Provided action was {0} with sum {1}'.format(action, sum(action)))
             if np.any(action < -1e-6):

@@ -10,23 +10,68 @@ import numpy as np
 import gym
 import time
 import matplotlib.pyplot as plt
+import random
 import gym_BSS  # noqa: F401
 
 
 #####################  hyper parameters  ####################
 
-MAX_EPISODES = 1000  # 200
+MAX_EPISODES = 2000  # 200
 MAX_EP_STEPS = 200
 LR_A = 0.001    # learning rate for actor
 LR_C = 0.002    # learning rate for critic
 GAMMA = 0.9     # reward discount
 TAU = 0.01  # 0.01      # soft replacement
-MEMORY_CAPACITY = 100  # 10000
+MEMORY_CAPACITY = 1000  # 10000
 c = 1  # 0.1
 BATCH_SIZE = 64  # 32
 RENDER = False
+random_seed = 0
 # ENV_NAME = 'Pendulum-v0'
 ENV_NAME = 'BSSEnvTest-v0'
+
+eval_freq = 5000
+#####################  global variables  ####################
+
+env = gym.make(ENV_NAME)
+env = env.unwrapped
+# env.seed(1)
+s_dim = env.observation_space.shape[0]
+a_dim = env.action_space.shape[0]
+a_bound = env.action_space.high
+
+#####################  random seed  ####################
+
+torch.manual_seed(random_seed)
+env.seed(random_seed)
+np.random.seed(random_seed)
+random.seed(random_seed)
+env.action_space.seed(random_seed)
+
+#################### testing part #################################
+def evaluation(ddpg, eval_episode=10):
+    avg_reward = 0
+    avg = []
+    eval_env = gym.make(ENV_NAME)
+    eval_env.seed(random_seed + 100)
+    for eptest in range(eval_episode):
+        running_reward = 0
+        done = False
+        s = eval_env.reset()
+        while not done:     
+            action = ddpg.choose_action(s, None)
+            s_, r, done, info = eval_env.step(action)
+            s = s_
+            running_reward = running_reward + r
+        print('Episode {}\tReward: {} \t AvgReward'.format(eptest, running_reward))
+        avg_reward = avg_reward + running_reward
+        avg.append(running_reward)
+    avg_reward = avg_reward / eval_episode
+    print("------------------------------------------------")
+    print("Evaluation average reward :",avg_reward)
+    print("------------------------------------------------")
+
+    return avg_reward / 100
 
 ###############################  DDPG  ####################################
 
@@ -92,7 +137,7 @@ class OptLayer(torch.nn.Module):
         b = cp.Parameter(D_out)
         x = cp.Parameter(D_in)
         obj = cp.Minimize(cp.sum_squares(Wtilde @ x - b - y))
-        cons = [cp.sum(y) == 90., 0 <= y, y <= u, Wtilde == W]
+        cons = [cp.sum(y) == env.nbikes, 0 <= y, y <= u, Wtilde == W]
         prob = cp.Problem(obj, cons)
         self.layer = CvxpyLayer(prob, [W, b, x], [y])
 
@@ -270,12 +315,8 @@ Rs = []
 ewma_reward = 0  # EWMA reward for tracking the learning progress
 ewma_reward_s = []
 
-env = gym.make(ENV_NAME)
-env = env.unwrapped
-env.seed(1)
-s_dim = env.observation_space.shape[0]
-a_dim = env.action_space.shape[0]
-a_bound = env.action_space.high
+eva_reward = []
+store_action = []
 
 param_noise = AdaptiveParamNoiseSpec(
     initial_stddev=0.05, desired_action_stddev=0.3, adaptation_coefficient=1.05)
@@ -301,13 +342,29 @@ for i in range(MAX_EPISODES):
 
         # Add exploration noise
         a_float = ddpg.choose_action(s, param_noise)
+        # Make it int and sum up to nbikes
         a = torch.round(a_float)
+        diff = abs(torch.sum(a) - env.nbikes)
+        if torch.sum(a) < env.nbikes:
+            for a_idx in range(a_dim):
+                if a[a_idx] + diff <= a_bound[a_idx]:
+                    a[a_idx] += diff
+                    break
+        elif torch.sum(a) > env.nbikes:
+            for a_idx in range(a_dim):
+                if a[a_idx] - diff >= 0:
+                    a[a_idx] -= diff
+                    break
         # print('===========In main: ===============')
         # print('s = ', s)
         # print('old a = ', a_float)
         # print('a = ', a)
         # add randomness to action selection for exploration
         # a = np.clip(np.random.normal(a, var), -2, 2)
+        # print('a: ', a)
+        # print('store_action: ', store_action)
+        store_action.append(a.numpy())
+
         s_, r, done, info = env.step(a)
 
         ddpg.store_transition(s, a, r, s_)
@@ -316,6 +373,9 @@ for i in range(MAX_EPISODES):
             var *= .9995    # decay the action randomness
             # print('learn!!!!')
             ddpg.learn()
+
+        if (ddpg.pointer + 1) % eval_freq == 0:
+            eva_reward.append(evaluation(ddpg))
 
         noise_counter += 1
         old_s = s
@@ -332,10 +392,10 @@ for i in range(MAX_EPISODES):
         '''
     ewma_reward = 0.05 * ep_reward + (1 - 0.05) * ewma_reward
 
-    print('===========In main: ===============')
-    print('s = ', old_s)
-    # print('old a = ', a_float)
-    print('a = ', a)
+    # print('===========In main: ===============')
+    # print('s = ', old_s)
+    # # print('old a = ', a_float)
+    # print('a = ', a)
 
     print({
         'episode': i,
@@ -345,6 +405,10 @@ for i in range(MAX_EPISODES):
     })
     Rs.append(ep_reward)
     ewma_reward_s.append(ewma_reward)
+    np.save('bike_{}_memory{}_ewma'.format(random_seed, MEMORY_CAPACITY), np.array(ewma_reward_s))
+    np.save('bike_{}_memory{}_ep_reward'.format(random_seed, MEMORY_CAPACITY), np.array(Rs))
+    np.save('bike_{}_memory{}_eval_reward'.format(random_seed, MEMORY_CAPACITY), np.array(eva_reward))
+    np.save('bike_{}_memory{}_action'.format(random_seed, MEMORY_CAPACITY), np.array(store_action))
 
 Rs = np.array(Rs)
 ewma_reward_s = np.array(ewma_reward_s)
@@ -354,7 +418,7 @@ print('---------------------------')
 print('Average reward per episode:', np.average(Rs))
 
 """
-Save rewards to file
+Save model
 """
 # np.save('ewma_reward', ewma_reward_s)
 # np.save('ep_reward', Rs)

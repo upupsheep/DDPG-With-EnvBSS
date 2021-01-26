@@ -9,9 +9,12 @@ import numpy as np
 import os
 
 # Data of the environment
-zone = random.randint(3, 6)  #basestation 3~5
-capacity = np.random.randint(10, 20, zone)
-distribution = np.random.randint(7, 10, zone)
+# zone = random.randint(3, 6)  #basestation 3~5
+zone = 5
+# capacity = np.random.randint(10, 20, zone)
+capacity = np.array([35, 35, 35, 35, 35])
+# distribution = np.random.randint(7, 10, zone)
+distribution = np.array([30, 30, 30, 30, 30])
 bike_num = sum(distribution)
 
 
@@ -56,7 +59,7 @@ def distance_zone():
     fx.close()
 
 
-def demand_scenario(scenario_num=60, ntimesteps=12):
+def demand_scenario(scenario_num=500, ntimesteps=12):
     """
     Write demand scenario information into file.
 
@@ -68,12 +71,12 @@ def demand_scenario(scenario_num=60, ntimesteps=12):
     if os.path.isdir("demand_scenario/") == False:
         os.mkdir("demand_scenario/")
     for scenario in range(1, scenario_num + 1):
-        file_name = "demand_scenario/demand_scenario_{}.txt".format(scenario)
+        file_name = "demand_scenario/demand_scenario_{}".format(scenario)
         f = open(file_name, "w+")
         for i in range(ntimesteps):
             for j in range(zone):
                 for k in range(zone):
-                    demand = float(np.random.randint(0, 3)) if j != k else 0.0
+                    demand = float(np.random.randint(0, 25)) if j != k else 0.0
                     f.write(str(demand) + ' ')
                 f.write("\n")
         f.close()
