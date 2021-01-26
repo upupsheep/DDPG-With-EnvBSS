@@ -41,6 +41,10 @@ s_dim = env.observation_space.shape[0]
 a_dim = env.action_space.shape[0]
 a_bound = env.action_space.high
 
+# store action before and after optLayer
+before_opt = []
+after_opt = []
+
 #####################  random seed  ####################
 
 torch.manual_seed(random_seed)
@@ -174,10 +178,18 @@ class ANet(nn.Module):   # ae(s)=a
         # print('a_bound: ', a_bound)
         # actions_value = x * a_bound
         actions_value = x * 35
-        # print('actions_value: ', actions_value)
+        
+        # print('=============')
+        # print('before opt: ', actions_value.data.numpy())
+        before_opt.append(actions_value.data.numpy())
+        # np.save('bike3_action_before', before_opt)
+        
         # opt_action = OptLayer(a_dim, a_dim)(x)
         opt_action = self.opt_layer(actions_value)
-        # print('opt_action: ', opt_action)
+        
+        # print('after opt: ', opt_action.data.numpy())
+        after_opt.append(opt_action.data.numpy())
+        # np.save('bike3_action_after', after_opt)
         return opt_action
 
 
@@ -406,11 +418,11 @@ for i in range(MAX_EPISODES):
     })
     Rs.append(ep_reward)
     ewma_reward_s.append(ewma_reward)
-    np.save('bike_{}_memory{}_ewma'.format(random_seed, MEMORY_CAPACITY), np.array(ewma_reward_s))
-    np.save('bike_{}_memory{}_ep_reward'.format(random_seed, MEMORY_CAPACITY), np.array(Rs))
-    np.save('bike_{}_memory{}_action'.format(random_seed, MEMORY_CAPACITY), np.array(store_action))
-    if EVAL:
-        np.save('bike_{}_memory{}_eval_reward'.format(random_seed, MEMORY_CAPACITY), np.array(eva_reward))
+    # np.save('bike3_seed{}_memory{}_ewma'.format(random_seed, MEMORY_CAPACITY), np.array(ewma_reward_s))
+    # np.save('bike3_seed{}_memory{}_ep_reward'.format(random_seed, MEMORY_CAPACITY), np.array(Rs))
+    # np.save('bike3_seed{}_memory{}_action'.format(random_seed, MEMORY_CAPACITY), np.array(store_action))
+    # if EVAL:
+        # np.save('bike3_seed{}_memory{}_eval_reward'.format(random_seed, MEMORY_CAPACITY), np.array(eva_reward))
 
 Rs = np.array(Rs)
 ewma_reward_s = np.array(ewma_reward_s)
