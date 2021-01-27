@@ -16,13 +16,13 @@ import gym_BSS  # noqa: F401
 
 #####################  hyper parameters  ####################
 
-MAX_EPISODES = 2000  # 200
+MAX_EPISODES = 5000  # 200
 MAX_EP_STEPS = 200
 LR_A = 0.001    # learning rate for actor
 LR_C = 0.002    # learning rate for critic
 GAMMA = 0.9     # reward discount
 TAU = 0.01  # 0.01      # soft replacement
-MEMORY_CAPACITY = 1000  # 10000
+MEMORY_CAPACITY = 10000  # 10000
 c = 1  # 0.1
 BATCH_SIZE = 64  # 32
 RENDER = False
@@ -30,7 +30,7 @@ random_seed = 1
 # ENV_NAME = 'Pendulum-v0'
 ENV_NAME = 'BSSEnvTest-v0'
 
-EVAL = False
+EVAL = True
 eval_freq = 5000
 #####################  global variables  ####################
 
@@ -54,6 +54,7 @@ def evaluation(ddpg, eval_episode=10):
     avg_reward = 0
     avg = []
     eval_env = gym.make(ENV_NAME)
+    # eval_env = env
     eval_env.seed(random_seed + 100)
     for eptest in range(eval_episode):
         running_reward = 0
@@ -406,11 +407,11 @@ for i in range(MAX_EPISODES):
     })
     Rs.append(ep_reward)
     ewma_reward_s.append(ewma_reward)
-    np.save('bike_{}_memory{}_ewma'.format(random_seed, MEMORY_CAPACITY), np.array(ewma_reward_s))
-    np.save('bike_{}_memory{}_ep_reward'.format(random_seed, MEMORY_CAPACITY), np.array(Rs))
-    np.save('bike_{}_memory{}_action'.format(random_seed, MEMORY_CAPACITY), np.array(store_action))
+    np.save('eval_bike5_seed{}_memory{}_ewma'.format(random_seed, MEMORY_CAPACITY), np.array(ewma_reward_s))
+    np.save('eval_bike5_seed{}_memory{}_ep_reward'.format(random_seed, MEMORY_CAPACITY), np.array(Rs))
+    np.save('eval_bike5_seed{}_memory{}_action'.format(random_seed, MEMORY_CAPACITY), np.array(store_action))
     if EVAL:
-        np.save('bike_{}_memory{}_eval_reward'.format(random_seed, MEMORY_CAPACITY), np.array(eva_reward))
+        np.save('eval_bike5_seed{}_memory{}_eval_reward'.format(random_seed, MEMORY_CAPACITY), np.array(eva_reward))
 
 Rs = np.array(Rs)
 ewma_reward_s = np.array(ewma_reward_s)

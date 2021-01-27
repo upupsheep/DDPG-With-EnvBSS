@@ -227,6 +227,7 @@ class BSSEnv(gym.Env):
             alloc_diff = action - np.array(self.__ds[self.__t])
             yn = alloc_diff * (alloc_diff > 0)
             yp = - alloc_diff * (alloc_diff < 0)
+            # print(self.__t)
             self.__yp[self.__t] = list(yp)
             self.__yn[self.__t] = list(yn)
 
