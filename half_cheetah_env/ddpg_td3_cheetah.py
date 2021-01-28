@@ -164,7 +164,7 @@ class OptLayer(torch.nn.Module):
         b = cp.Parameter(D_out)
         x = cp.Parameter(D_in)
         obj = cp.Minimize(cp.sum_squares(Wtilde @ x - b - y))
-        cons = [cp.sum(y) <= 0.1, cp.sum(y) >= -0.1, cp.sum_squares(y) <= 0.02, Wtilde == W]
+        cons = [cp.sum_squares(y[:3]) <= 1, cp.sum_squares(y[3:]) <= 1, Wtilde == W]
         prob = cp.Problem(obj, cons)
         self.layer = CvxpyLayer(prob, [W, b, x], [y])
 
