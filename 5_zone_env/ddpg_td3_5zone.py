@@ -16,14 +16,14 @@ device = torch.device("cpu")
 
 #####################  hyper parameters  ####################
 
-MAX_EPISODES = 100000000 # 5000
-MAX_EP_STEPS = 100
+MAX_EPISODES = 5000 # 5000
+MAX_EP_STEPS = 500
 TOTAL_STEPS = 500000
 LR_A = 0.001    # learning rate for actor
 LR_C = 0.002    # learning rate for critic
 GAMMA = 0.9    # reward discount
 TAU = 0.01  # 0.01      # soft replacement
-MEMORY_CAPACITY = 10000  # 10000
+MEMORY_CAPACITY = 1000  # 10000
 c = 1  # 0.1
 BATCH_SIZE = 64  # 32
 RENDER = False
@@ -34,7 +34,10 @@ arg_env = 'BSSEnvTest-v0'
 EVAL = True
 eval_freq = 5000
 
-SAVE_FILE = False
+SAVE_FILE = True
+
+before_opt = []
+after_opt = []
 #############################################################
 
 # Implementation of Deep Deterministic Policy Gradients (DDPG)
@@ -210,7 +213,10 @@ class Actor(nn.Module):
         a = F.relu(self.l1(state))
         a = F.relu(self.l2(a))
         scaled_a = self.max_action * torch.add(torch.tanh(self.l3(a)), 1) / 2
+
+        before_opt.append(scaled_a.detach().cpu().numpy())
         opt_a = self.opt_layer(scaled_a)
+        after_opt.append(opt_a.detach().cpu().numpy())
         return opt_a
 
 
@@ -422,7 +428,7 @@ if __name__ == "__main__":
 
         if done: 
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
-            ewma_r = 0.05 * episode_reward + (1 - 0.005) * ewma_r
+            ewma_r = 0.05 * episode_reward + (1 - 0.05) * ewma_r
             print(f"Total T: {t+1} Episode Num: {episode_num+1} Episode T: {episode_timesteps} Reward: {episode_reward:.3f} EWMA: {ewma_r:.3f}")
 
             # save results
@@ -433,6 +439,8 @@ if __name__ == "__main__":
                 np.save(filepath+'{}bike_seed{}_memory{}_ewma_reward'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_ewma))
                 np.save(filepath+'{}bike_seed{}_memory{}_action'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_action))
                 np.save(filepath+'{}bike_seed{}_memory{}_state'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_state))
+                np.save(filepath+'{}bike_seed{}_memory{}_before_opt'.format(action_dim, random_seed, MEMORY_CAPACITY), before_opt)
+                np.save(filepath+'{}bike_seed{}_memory{}_after_opt'.format(action_dim, random_seed, MEMORY_CAPACITY), after_opt)
 
             # Reset environment
             state, done = env.reset(), False
@@ -447,3 +455,11 @@ if __name__ == "__main__":
                 np.save(filepath+'{}bike_seed{}_memory{}_eval_reward'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(evaluations))
             # np.save(f"./results/{file_name}", evaluations)
             # if args.save_model: policy.save(f"./models/{file_name}")
+
+        if SAVE_FILE:
+            np.save(filepath+'{}bike_seed{}_memory{}_episode_reward'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_reward))
+            np.save(filepath+'{}bike_seed{}_memory{}_ewma_reward'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_ewma))
+            np.save(filepath+'{}bike_seed{}_memory{}_action'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_action))
+            np.save(filepath+'{}bike_seed{}_memory{}_state'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_state))
+            np.save(filepath+'{}bike_seed{}_memory{}_before_opt'.format(action_dim, random_seed, MEMORY_CAPACITY), before_opt)
+            np.save(filepath+'{}bike_seed{}_memory{}_after_opt'.format(action_dim, random_seed, MEMORY_CAPACITY), after_opt)

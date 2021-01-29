@@ -407,11 +407,11 @@ for i in range(MAX_EPISODES):
     })
     Rs.append(ep_reward)
     ewma_reward_s.append(ewma_reward)
-    np.save('eval_bike5_seed{}_memory{}_ewma'.format(random_seed, MEMORY_CAPACITY), np.array(ewma_reward_s))
-    np.save('eval_bike5_seed{}_memory{}_ep_reward'.format(random_seed, MEMORY_CAPACITY), np.array(Rs))
-    np.save('eval_bike5_seed{}_memory{}_action'.format(random_seed, MEMORY_CAPACITY), np.array(store_action))
+    np.save('old_bike5_seed{}_memory{}_ewma'.format(random_seed, MEMORY_CAPACITY), np.array(ewma_reward_s))
+    np.save('old_bike5_seed{}_memory{}_ep_reward'.format(random_seed, MEMORY_CAPACITY), np.array(Rs))
+    np.save('old_bike5_seed{}_memory{}_action'.format(random_seed, MEMORY_CAPACITY), np.array(store_action))
     if EVAL:
-        np.save('eval_bike5_seed{}_memory{}_eval_reward'.format(random_seed, MEMORY_CAPACITY), np.array(eva_reward))
+        np.save('old_bike5_seed{}_memory{}_eval_reward'.format(random_seed, MEMORY_CAPACITY), np.array(eva_reward))
 
 Rs = np.array(Rs)
 ewma_reward_s = np.array(ewma_reward_s)

@@ -14,7 +14,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 #####################  hyper parameters  ####################
 
-MAX_EPISODES = 100000000 # 5000
+MAX_EPISODES = 10000 # 5000
 MAX_EP_STEPS = 100
 TOTAL_STEPS = 500000
 LR_A = 0.0001    # learning rate for actor
@@ -33,6 +33,9 @@ EVAL = True
 eval_freq = 5000
 
 SAVE_FILE = True
+
+before_opt = []
+after_opt = []
 #############################################################
 
 # Implementation of Deep Deterministic Policy Gradients (DDPG)
@@ -194,7 +197,9 @@ class Actor(nn.Module):
         a = F.relu(self.l1(state))
         a = F.relu(self.l2(a))
         scaled_a = self.max_action * torch.tanh(self.l3(a))
+        # before_opt.append(scaled_a)
         opt_a = self.opt_layer(scaled_a)
+        # after_opt.append(opt_a)
         return opt_a
 
 
@@ -226,6 +231,8 @@ class DDPG(object):
 
         self.discount = discount
         self.tau = tau
+        
+        # torch.cuda.empty_cache()
 
 
     def select_action(self, state, para):
@@ -234,6 +241,7 @@ class DDPG(object):
             return self.actor_perturbed(state).cpu().data.numpy().flatten()
         else:
             return self.actor(state).cpu().data.numpy().flatten()
+        # torch.cuda.empty_cache()
 
 
     def perturb_actor_parameters(self, param_noise):
@@ -248,11 +256,13 @@ class DDPG(object):
             # if use_cuda:
                 # random = random.cuda()
             param += random * param_noise.current_stddev
+            # torch.cuda.empty_cache()
 
 
     def train(self, replay_buffer, batch_size=64):
         # Sample replay buffer 
         state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
+        # torch.cuda.empty_cache()
 
         # Compute the target Q value
         target_Q = self.critic_target(next_state, self.actor_target(next_state))
@@ -393,7 +403,7 @@ if __name__ == "__main__":
 
         if done: 
             # +1 to account for 0 indexing. +0 on ep_timesteps since it will increment +1 even if done=True
-            ewma_r = 0.05 * episode_reward + (1 - 0.005) * ewma_r
+            ewma_r = 0.05 * episode_reward + (1 - 0.05) * ewma_r
             print(f"Total T: {t+1} Episode Num: {episode_num+1} Episode T: {episode_timesteps} Reward: {episode_reward:.3f} EWMA: {ewma_r:.3f}")
 
             # save results
@@ -403,6 +413,8 @@ if __name__ == "__main__":
                 np.save('Reacher_seed{}_episode_reward'.format(random_seed), np.array(store_reward))
                 np.save('Reacher_seed{}_ewma_reward'.format(random_seed), np.array(store_ewma))
                 np.save('Reacher_seed{}_action'.format(random_seed), np.array(store_action))
+                np.save('Reacher_seed{}_before_opt'.format(random_seed), before_opt)
+                np.save('Reacher_seed{}_after_opt'.format(random_seed), after_opt)
 
             # Reset environment
             state, done = env.reset(), False
@@ -417,3 +429,9 @@ if __name__ == "__main__":
                 np.save('Reacher_seed{}_eval_reward'.format(random_seed), np.array(evaluations))
             # np.save(f"./results/{file_name}", evaluations)
             # if args.save_model: policy.save(f"./models/{file_name}")
+    if SAVE_FILE:
+            np.save('Reacher_seed{}_episode_reward'.format(random_seed), np.array(store_reward))
+            np.save('Reacher_seed{}_ewma_reward'.format(random_seed), np.array(store_ewma))
+            np.save('Reacher_seed{}_action'.format(random_seed), np.array(store_action))
+            np.save('Reacher_seed{}_before_opt'.format(random_seed), before_opt)
+            np.save('Reacher_seed{}_after_opt'.format(random_seed), after_opt)

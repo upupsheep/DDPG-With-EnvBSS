@@ -8,26 +8,28 @@ import torch.nn as nn
 import torch.nn.functional as F
 from cvxpylayers.torch import CvxpyLayer
 import cvxpy as cp
+import gym_BSS
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 #####################  hyper parameters  ####################
 
-MAX_EPISODES = 1000 # 5000
-MAX_EP_STEPS = 100
-TOTAL_STEPS = 1e+6
-LR_A = 0.0001    # learning rate for actor
-LR_C = 0.001    # learning rate for critic
-GAMMA = 0.99    # reward discount
-TAU = 0.001  # 0.01      # soft replacement
-MEMORY_CAPACITY = 1e+6  # 10000
-c = 0.1  # 0.1
+MAX_EPISODES = 5000 # 5000
+MAX_EP_STEPS = 500
+TOTAL_STEPS = 500000
+LR_A = 0.001    # learning rate for actor
+LR_C = 0.002    # learning rate for critic
+GAMMA = 0.9    # reward discount
+TAU = 0.01  # 0.01      # soft replacement
+MEMORY_CAPACITY = 1000  # 10000
+c = 1  # 0.1
 BATCH_SIZE = 64  # 32
 RENDER = False
 random_seed = 1
 # ENV_NAME = 'Pendulum-v0'
-arg_env = 'HalfCheetah-v2'
+arg_env = 'BSSEnvTest-v0'
 
 EVAL = True
 eval_freq = 5000
@@ -43,17 +45,30 @@ after_opt = []
 # [Not the implementation used in the TD3 paper]
 # Runs policy for X episodes and returns average reward
 # A fixed seed is used for the eval environment
-def eval_policy(policy, env_name, seed, eval_episodes=10):
+def eval_policy(policy, env_name, seed, filepath, eval_episodes=10):
     eval_env = gym.make(env_name)
     eval_env.seed(seed + 100)
 
     avg_reward = 0.
     eval_action = []
+    eval_state = []
     for _ in range(eval_episodes):
-        state, done = eval_env.reset(), False
+        state, done = np.round(eval_env.reset()), False
         while not done:
-            action = policy.select_action(np.array(state), None)
+            action_float = policy.select_action(np.array(state), None)
+
+            # Switch to INT
+            action = np.round(action_float)
+            diff = abs(np.sum(action) - env.nbikes)
+            if np.sum(action) < env.nbikes:
+                min_idx = np.argmin(action)
+                action[min_idx] += diff
+            elif np.sum(action) > env.nbikes:
+                max_idx = np.argmax(action)
+                action[max_idx] -= diff
+
             eval_action.append(action)
+            eval_state.append(state)
             state, reward, done, _ = eval_env.step(action)
             avg_reward += reward
 
@@ -63,7 +78,8 @@ def eval_policy(policy, env_name, seed, eval_episodes=10):
     print(f"Evaluation over {eval_episodes} episodes: {avg_reward:.3f}")
     print("---------------------------------------")
     if SAVE_FILE:
-        np.save('Cheetah_seed{}_eval_action'.format(random_seed), np.array(eval_action))
+        np.save(filepath+'{}bike_seed{}_memory{}_eval_action'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(eval_action))
+        np.save(filepath+'{}bike_seed{}_memory{}_eval_state'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(eval_state))
     return avg_reward
 
 
@@ -167,7 +183,7 @@ class OptLayer(torch.nn.Module):
         b = cp.Parameter(D_out)
         x = cp.Parameter(D_in)
         obj = cp.Minimize(cp.sum_squares(Wtilde @ x - b - y))
-        cons = [cp.sum_squares(y[:3]) <= 1, cp.sum_squares(y[3:]) <= 1, Wtilde == W]
+        cons = [cp.sum(y) == env.nbikes, 0 <= y, y <= u, Wtilde == W]
         prob = cp.Problem(obj, cons)
         self.layer = CvxpyLayer(prob, [W, b, x], [y])
 
@@ -184,9 +200,9 @@ class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action):
         super(Actor, self).__init__()
 
-        self.l1 = nn.Linear(state_dim, 400)
-        self.l2 = nn.Linear(400, 300)
-        self.l3 = nn.Linear(300, action_dim)
+        self.l1 = nn.Linear(state_dim, 32)
+        self.l2 = nn.Linear(32, 32)
+        self.l3 = nn.Linear(32, action_dim)
 
         self.opt_layer = OptLayer(action_dim, action_dim, max_action)
         
@@ -196,10 +212,11 @@ class Actor(nn.Module):
     def forward(self, state):
         a = F.relu(self.l1(state))
         a = F.relu(self.l2(a))
-        scaled_a = self.max_action * torch.tanh(self.l3(a))
-        # before_opt.append(scaled_a)
+        scaled_a = self.max_action * torch.add(torch.tanh(self.l3(a)), 1) / 2
+
+        before_opt.append(scaled_a.detach().cpu().numpy())
         opt_a = self.opt_layer(scaled_a)
-        # after_opt.append(opt_a)
+        after_opt.append(opt_a.detach().cpu().numpy())
         return opt_a
 
 
@@ -207,9 +224,9 @@ class Critic(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(Critic, self).__init__()
 
-        self.l1 = nn.Linear(state_dim, 400)
-        self.l2 = nn.Linear(400 + action_dim, 300)
-        self.l3 = nn.Linear(300, 1)
+        self.l1 = nn.Linear(state_dim, 32)
+        self.l2 = nn.Linear(32 + action_dim, 32)
+        self.l3 = nn.Linear(32, 1)
 
 
     def forward(self, state, action):
@@ -309,9 +326,6 @@ class DDPG(object):
 
 
 if __name__ == "__main__":
-    if not os.path.exists("./results"):
-        os.makedirs("./results")
-
     # if args.save_model and not os.path.exists("./models"):
     #     os.makedirs("./models")
 
@@ -334,6 +348,10 @@ if __name__ == "__main__":
         "tau": TAU,
     }
 
+    if not os.path.exists("./noExplore_results_{}".format(MEMORY_CAPACITY)):
+        os.makedirs("./noExplore_results_{}".format(MEMORY_CAPACITY))
+    filepath = "./noExplore_results_{}".format(MEMORY_CAPACITY)
+
     # # Initialize policy
     # if args.policy == "TD3":
     # 	# Target policy smoothing is scaled wrt the action scale
@@ -354,9 +372,9 @@ if __name__ == "__main__":
     replay_buffer = ReplayBuffer(state_dim, action_dim)
     
     # Evaluate untrained policy
-    evaluations = [eval_policy(policy, arg_env, random_seed)]
+    evaluations = [eval_policy(policy, arg_env, random_seed, filepath)]
 
-    state, done = env.reset(), False
+    state, done = np.round(env.reset()), False
     episode_reward = 0
     ewma_r = 0
     episode_timesteps = 0
@@ -366,8 +384,10 @@ if __name__ == "__main__":
     # eva_reward = []
     store_action = []
     store_reward = []
+    store_state = []
 
-    param_noise = AdaptiveParamNoiseSpec(initial_stddev=0.05,desired_action_stddev=0.3, adaptation_coefficient=1.05)
+    # param_noise = AdaptiveParamNoiseSpec(initial_stddev=0.05,desired_action_stddev=0.3, adaptation_coefficient=1.05)
+    param_noise = None
 
     for t in range(int(MAX_EPISODES)):
         
@@ -377,13 +397,24 @@ if __name__ == "__main__":
             policy.perturb_actor_parameters(param_noise)
 
         # # Select action randomly or according to policy
-        action = policy.select_action(state, param_noise)
+        action_float = policy.select_action(state, param_noise)
+        
+        # Switch to INT
+        action = np.round(action_float)
+        diff = abs(np.sum(action) - env.nbikes)
+        if np.sum(action) < env.nbikes:
+            min_idx = np.argmin(action)
+            action[min_idx] += diff
+        elif np.sum(action) > env.nbikes:
+            max_idx = np.argmax(action)
+            action[max_idx] -= diff
 
         store_action.append(action)
+        store_state.append(state)
 
         # Perform action
         next_state, reward, done, _ = env.step(action) 
-        done_bool = float(done) if episode_timesteps < env._max_episode_steps else 0
+        done_bool = float(done) if episode_timesteps < MAX_EP_STEPS else 0
 
         # Store data in replay buffer
         replay_buffer.add(state, action, next_state, reward, done_bool)
@@ -404,12 +435,13 @@ if __name__ == "__main__":
             # save results
             store_reward.append(episode_reward)
             store_ewma.append(ewma_r)
-            if SAVE_FILE:
-                np.save('Cheetah_seed{}_episode_reward'.format(random_seed), np.array(store_reward))
-                np.save('Cheetah_seed{}_ewma_reward'.format(random_seed), np.array(store_ewma))
-                np.save('Cheetah_seed{}_action'.format(random_seed), np.array(store_action))
-                np.save('Cheetah_seed{}_before_opt'.format(random_seed), before_opt)
-                np.save('Cheetah_seed{}_after_opt'.format(random_seed), after_opt)
+            # if SAVE_FILE:
+            #     np.save(filepath+'{}bike_seed{}_memory{}_episode_reward'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_reward))
+            #     np.save(filepath+'{}bike_seed{}_memory{}_ewma_reward'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_ewma))
+            #     np.save(filepath+'{}bike_seed{}_memory{}_action'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_action))
+            #     np.save(filepath+'{}bike_seed{}_memory{}_state'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_state))
+            #     np.save(filepath+'{}bike_seed{}_memory{}_before_opt'.format(action_dim, random_seed, MEMORY_CAPACITY), before_opt)
+            #     np.save(filepath+'{}bike_seed{}_memory{}_after_opt'.format(action_dim, random_seed, MEMORY_CAPACITY), after_opt)
 
             # Reset environment
             state, done = env.reset(), False
@@ -419,15 +451,16 @@ if __name__ == "__main__":
 
         # Evaluate episode
         if (t + 1) % eval_freq == 0:
-            evaluations.append(eval_policy(policy, arg_env, random_seed))
+            evaluations.append(eval_policy(policy, arg_env, random_seed, filepath))
             if SAVE_FILE:
-                np.save('Cheetah_seed{}_eval_reward'.format(random_seed), np.array(evaluations))
+                np.save(filepath+'{}bike_seed{}_memory{}_eval_reward'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(evaluations))
             # np.save(f"./results/{file_name}", evaluations)
             # if args.save_model: policy.save(f"./models/{file_name}")
 
         if SAVE_FILE:
-            np.save('Cheetah_seed{}_episode_reward'.format(random_seed), np.array(store_reward))
-            np.save('Cheetah_seed{}_ewma_reward'.format(random_seed), np.array(store_ewma))
-            np.save('Cheetah_seed{}_action'.format(random_seed), np.array(store_action))
-            np.save('Cheetah_seed{}_before_opt'.format(random_seed), before_opt)
-            np.save('Cheetah_seed{}_after_opt'.format(random_seed), after_opt)
+            np.save(filepath+'{}bike_seed{}_memory{}_episode_reward'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_reward))
+            np.save(filepath+'{}bike_seed{}_memory{}_ewma_reward'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_ewma))
+            np.save(filepath+'{}bike_seed{}_memory{}_action'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_action))
+            np.save(filepath+'{}bike_seed{}_memory{}_state'.format(action_dim, random_seed, MEMORY_CAPACITY), np.array(store_state))
+            np.save(filepath+'{}bike_seed{}_memory{}_before_opt'.format(action_dim, random_seed, MEMORY_CAPACITY), before_opt)
+            np.save(filepath+'{}bike_seed{}_memory{}_after_opt'.format(action_dim, random_seed, MEMORY_CAPACITY), after_opt)

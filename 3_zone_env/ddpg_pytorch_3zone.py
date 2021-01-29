@@ -16,9 +16,8 @@ import gym_BSS  # noqa: F401
 
 #####################  hyper parameters  ####################
 
-MAX_EPISODES = 100000000 # 5000
+MAX_EPISODES = 5000  # 200
 MAX_EP_STEPS = 100
-TOTAL_STEPS = 500000
 LR_A = 0.001    # learning rate for actor
 LR_C = 0.002    # learning rate for critic
 GAMMA = 0.9     # reward discount
@@ -33,8 +32,6 @@ ENV_NAME = 'BSSEnvTest-v0'
 
 EVAL = True
 eval_freq = 5000
-
-SAVE_FILE = True
 #####################  global variables  ####################
 
 env = gym.make(ENV_NAME)
@@ -60,33 +57,16 @@ env.action_space.seed(random_seed)
 def evaluation(ddpg, eval_episode=10):
     avg_reward = 0
     avg = []
-    eval_action = []
     eval_env = gym.make(ENV_NAME)
     # eval_env = env
     eval_env.seed(random_seed + 100)
     for eptest in range(eval_episode):
         running_reward = 0
         done = False
-        s = np.round(eval_env.reset())
+        s = eval_env.reset()
         while not done:     
-            a_float = ddpg.choose_action(s, None)
-            a = torch.round(a_float)
-            diff = abs(torch.sum(a) - env.nbikes)
-            if torch.sum(a) < env.nbikes:
-                for a_idx in range(a_dim):
-                    if a[a_idx] + diff <= a_bound[a_idx]:
-                        a[a_idx] += diff
-                        break
-            elif torch.sum(a) > env.nbikes:
-                for a_idx in range(a_dim):
-                    if a[a_idx] - diff >= 0:
-                        a[a_idx] -= diff
-                        break
-            # print('eval a: ', a)
-            
-            eval_action.append(a.numpy())
-
-            s_, r, done, info = eval_env.step(a)
+            action = ddpg.choose_action(s, None)
+            s_, r, done, info = eval_env.step(action)
             s = s_
             running_reward = running_reward + r
         print('Episode {}\tReward: {} \t AvgReward'.format(eptest, running_reward))
@@ -96,8 +76,6 @@ def evaluation(ddpg, eval_episode=10):
     print("------------------------------------------------")
     print("Evaluation average reward :",avg_reward)
     print("------------------------------------------------")
-    if SAVE_FILE:
-        np.save('bike3_seed{}_memory{}_eval_action'.format(random_seed, MEMORY_CAPACITY), np.array(eval_action))
 
     return avg_reward
 
@@ -200,9 +178,7 @@ class ANet(nn.Module):   # ae(s)=a
         # print('x: ', x)
         # print('a_bound: ', a_bound)
         # actions_value = x * a_bound
-        # actions_value = x * 35
-        actions_value = torch.mul(torch.add(x, 1), torch.as_tensor(a_bound / 2))
-        # print('action_value: ', actions_value)
+        actions_value = x * 35
         
         # print('=============')
         # print('before opt: ', actions_value.data.numpy())
@@ -244,7 +220,7 @@ class DDPG(object):
     def __init__(self, a_dim, s_dim, a_bound,):
         self.a_dim, self.s_dim, self.a_bound = a_dim, s_dim, a_bound,
         self.memory = np.zeros(
-            (MEMORY_CAPACITY, s_dim * 2 + a_dim + 1 + 1), dtype=np.float32)
+            (MEMORY_CAPACITY, s_dim * 2 + a_dim + 1), dtype=np.float32)
         self.pointer = 0
         # self.sess = tf.Session()
         self.Actor_eval = ANet(s_dim, a_dim)  # .type(torch.IntTensor)
@@ -282,7 +258,7 @@ class DDPG(object):
 
         # soft target replacement
         # self.sess.run(self.soft_replace)  # 用ae、ce更新at，ct
-        record_range = min(self.pointer+1, MEMORY_CAPACITY)
+        record_range = min(self.pointer, MEMORY_CAPACITY)
         indices = np.random.choice(record_range, size=BATCH_SIZE)
         bt = self.memory[indices, :]
         # '''
@@ -290,7 +266,6 @@ class DDPG(object):
         ba = torch.FloatTensor(bt[:, self.s_dim: self.s_dim + self.a_dim])
         br = torch.FloatTensor(bt[:, -self.s_dim - 1: -self.s_dim])
         bs_ = torch.FloatTensor(bt[:, -self.s_dim:])
-        bd = torch.FloatTensor(bt[:, -1:]) # bd: not done
         # '''
         '''
         bs = torch.IntTensor(bt[:, :self.s_dim])
@@ -310,7 +285,6 @@ class DDPG(object):
         loss_a.backward()
         self.atrain.step()
         # print('atrain grad: ', self.atrain.grad)
-        # print("===================")
         # for p in self.Actor_eval.parameters():
         #     print(p.name, p.requires_grad, p.grad.norm())
 
@@ -318,7 +292,7 @@ class DDPG(object):
         a_ = self.Actor_target(bs_)
         # 这个网络不及时更新参数, 用于给出 Actor 更新参数时的 Gradient ascent 强度
         q_ = self.Critic_target(bs_, a_)
-        q_target = br + bd*GAMMA*q_  # q_target = 负的
+        q_target = br+GAMMA*q_  # q_target = 负的
         # print('q_target: ', q_target)
         q_v = self.Critic_eval(bs, ba)
         # print('q_v: ', q_v)
@@ -329,8 +303,8 @@ class DDPG(object):
         td_error.backward()
         self.ctrain.step()
 
-    def store_transition(self, s, a, r, s_, not_done):
-        transition = np.hstack((s, a, [r], s_, not_done))
+    def store_transition(self, s, a, r, s_):
+        transition = np.hstack((s, a, [r], s_))
         # replace the old memory with new memory
         index = self.pointer % MEMORY_CAPACITY
         self.memory[index, :] = transition
@@ -366,20 +340,17 @@ ddpg = DDPG(a_dim, s_dim, a_bound)
 
 var = 3  # control exploration
 t1 = time.time()
-episode_timesteps = 0
 for i in range(MAX_EPISODES):
-    episode_timesteps = 0
     s = np.round(env.reset())
     old_s = s
     ep_reward = 0
     done = False
+    j = 0
     noise_counter = 0
     if param_noise is not None:
         ddpg.perturb_actor_parameters(param_noise)
     # for j in range(MAX_EP_STEPS):
     while not done:
-        episode_timesteps += 1
-
         if RENDER:
             env.render()
 
@@ -409,17 +380,15 @@ for i in range(MAX_EPISODES):
         store_action.append(a.numpy())
 
         s_, r, done, info = env.step(a)
-        done_bool = False if episode_timesteps < MAX_EP_STEPS else done
 
-        not_done_bool = 1 - float(done_bool)
-        ddpg.store_transition(s, a, r, s_, not_done_bool)
+        ddpg.store_transition(s, a, r, s_)
 
         if ddpg.pointer > c*MEMORY_CAPACITY:
             var *= .9995    # decay the action randomness
             # print('learn!!!!')
             ddpg.learn()
 
-        if EVAL and ((ddpg.pointer + 1) % eval_freq == 0):
+        if EVAL and (ddpg.pointer + 1) % eval_freq == 0:
             eva_reward.append(evaluation(ddpg))
 
         noise_counter += 1
@@ -450,17 +419,11 @@ for i in range(MAX_EPISODES):
     })
     Rs.append(ep_reward)
     ewma_reward_s.append(ewma_reward)
-
-    if SAVE_FILE:
-        np.save('bike3_seed{}_memory{}_ewma'.format(random_seed, MEMORY_CAPACITY), np.array(ewma_reward_s))
-        np.save('bike3_seed{}_memory{}_ep_reward'.format(random_seed, MEMORY_CAPACITY), np.array(Rs))
-        np.save('bike3_seed{}_memory{}_action'.format(random_seed, MEMORY_CAPACITY), np.array(store_action))
-        if EVAL:
-            np.save('bike3_seed{}_memory{}_eval_reward'.format(random_seed, MEMORY_CAPACITY), np.array(eva_reward))
-
-    if ddpg.pointer >= TOTAL_STEPS:
-        print("done traing")
-        break
+    np.save('eval_bike3_seed{}_memory{}_ewma'.format(random_seed, MEMORY_CAPACITY), np.array(ewma_reward_s))
+    np.save('eval_bike3_seed{}_memory{}_ep_reward'.format(random_seed, MEMORY_CAPACITY), np.array(Rs))
+    np.save('eval_bike3_seed{}_memory{}_action'.format(random_seed, MEMORY_CAPACITY), np.array(store_action))
+    if EVAL:
+        np.save('eval_bike3_seed{}_memory{}_eval_reward'.format(random_seed, MEMORY_CAPACITY), np.array(eva_reward))
 
 Rs = np.array(Rs)
 ewma_reward_s = np.array(ewma_reward_s)
