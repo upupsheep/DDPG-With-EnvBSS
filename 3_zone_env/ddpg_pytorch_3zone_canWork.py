@@ -101,7 +101,6 @@ def evaluation(ddpg, filepath, eval_episode=10):
         np.save(filepath+'/{}bike_seed{}_memory{}_eval_action'.format(a_dim, random_seed, MEMORY_CAPACITY), np.array(eval_action))
         np.save(filepath+'/{}bike_seed{}_memory{}_eval_state'.format(a_dim, random_seed, MEMORY_CAPACITY), np.array(eval_state))
 
-
     return avg_reward
 
 ###############################  DDPG  ####################################
@@ -222,16 +221,19 @@ class ANet(nn.Module):   # ae(s)=a
 class CNet(nn.Module):   # ae(s)=a
     def __init__(self, s_dim, a_dim):
         super(CNet, self).__init__()
+        '''
         self.fcs = nn.Linear(s_dim, 32)
-        # self.fcs.weight.data.normal_(0, 0.1)  # initialization
         self.fca = nn.Linear(a_dim, 32)
-        # self.fca.weight.data.normal_(0, 0.1)  # initialization
         self.fc2 = nn.Linear(32, 32)
-        # self.fc2.weight.data.normal_(0, 0.1)  # initialization
         self.out = nn.Linear(32, 1)
-        # self.out.weight.data.normal_(0, 0.1)  # initialization
+        '''
+        self.l1 = nn.Linear(s_dim, 32)
+        self.l2 = nn.Linear(32 + a_dim, 32)
+        self.l3 = nn.Linear(32, 1)
+
 
     def forward(self, s, a):
+        '''
         x = self.fcs(s)
         y = self.fca(a)
         net = F.relu(x+y)
@@ -239,6 +241,10 @@ class CNet(nn.Module):   # ae(s)=a
         z = F.relu(z)
         actions_value = self.out(z)
         return actions_value
+        '''
+        q = F.relu(self.l1(s))
+        q = F.relu(self.l2(torch.cat([q, a], 1)))
+        return self.l3(q)
 
 
 class DDPG(object):
@@ -351,7 +357,7 @@ class DDPG(object):
 
 
 ###############################  training  ####################################
-filepath = "./New_Done_pytorch_result_{}".format(MEMORY_CAPACITY)
+filepath = "./pytorch_result_{}".format(MEMORY_CAPACITY)
 if not os.path.exists(filepath):
     os.mkdir(filepath)
 
@@ -361,7 +367,7 @@ ewma_reward_s = []
 
 eva_reward = []
 store_action = []
-store_state  = []
+store_state = []
 
 param_noise = AdaptiveParamNoiseSpec(
     initial_stddev=0.05, desired_action_stddev=0.3, adaptation_coefficient=1.05)
@@ -409,10 +415,9 @@ for i in range(MAX_EPISODES):
         # print('a: ', a)
         # print('store_action: ', store_action)
         store_action.append(a.numpy())
-        store_state.append(s)
+        store_state.append((s))
 
         s_, r, done, info = env.step(a)
-        done_bool = float(done) if j < MAX_EP_STEPS else 0
 
         ddpg.store_transition(s, a, r, s_)
 
@@ -428,8 +433,6 @@ for i in range(MAX_EPISODES):
         old_s = s
         s = s_
         ep_reward += r
-
-        j += 1
         '''
         if j == MAX_EP_STEPS-1:
             print('Episode:', i, ' Reward: %i' %
